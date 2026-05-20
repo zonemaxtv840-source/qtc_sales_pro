@@ -6,6 +6,7 @@ import streamlit as st
 from datetime import datetime
 import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Configuración de página
 from config.settings import PAGE_CONFIG
