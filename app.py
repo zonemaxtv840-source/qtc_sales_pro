@@ -39,17 +39,28 @@ def main():
     
     st.markdown("---")
     
-    # Tabs principales
-    tab1, tab2, tab3 = st.tabs(["📦 MODO MASIVO (Bulk)", "🔍 BÚSQUEDA INTELIGENTE", "🛒 CARRITO DE COTIZACIÓN"])
-    
-    with tab1:
-        render_bulk_tab()
-    
-    with tab2:
-        render_search_tab()
-    
-    with tab3:
-        render_cart_tab()
+    # app.py - Sección de tabs (reemplazar la existente)
+
+# Tabs principales (AHORA CON 4 TABS)
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📦 MODO MASIVO (Bulk)", 
+    "🔍 BÚSQUEDA INTELIGENTE", 
+    "🛒 CARRITO DE COTIZACIÓN",
+    "🔧 SKU SCRAPER"  # NUEVO TAB
+])
+
+with tab1:
+    render_bulk_tab()
+
+with tab2:
+    render_search_tab()
+
+with tab3:
+    render_cart_tab()
+
+with tab4:
+    from ui.tabs.skuscraper_tab import render_skuscraper_tab
+    render_skuscraper_tab()
     
     # Footer
     st.markdown("---")
