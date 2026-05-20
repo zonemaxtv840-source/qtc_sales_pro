@@ -12,9 +12,11 @@ st.set_page_config(**PAGE_CONFIG)
 from modules.auth import inicializar_sesion, mostrar_pantalla_login, cerrar_sesion
 from ui.styles import apply_custom_styles
 from ui.components import mostrar_header
+# app.py - Al inicio con los otros imports
 from ui.tabs.bulk_tab import render_bulk_tab
 from ui.tabs.search_tab import render_search_tab
 from ui.tabs.cart_tab import render_cart_tab
+from ui.tabs.skuscraper_tab import render_skuscraper_tab  # NUEVO
 
 
 def main():
