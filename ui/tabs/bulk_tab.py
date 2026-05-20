@@ -1,5 +1,7 @@
-# ui/tabs/bulk_tab.py - MODO MASIVO COMPLETO
+# ui/tabs/bulk_tab.py
 import streamlit as st
+
+# Usar imports absolutos desde la raíz del proyecto
 from modules.stock_logic import buscar_stock_para_sku, calcular_cantidad_total_segura, calcular_cantidad_apri001_only
 from modules.xiaomi_handler import buscar_producto
 from modules.ugreen_handler import buscar_ugreen_producto
@@ -8,8 +10,9 @@ from ui.components import mostrar_resumen_bulk
 
 
 def render_bulk_tab():
+    modo = st.session_state.get('modo', 'XIAOMI')
     st.markdown("### 📦 Ingresa productos en formato masivo")
-    st.caption(f"🔍 Modo: **{st.session_state.modo}** | Formato: `SKU:CANTIDAD` (uno por línea)")
+    st.caption(f"🔍 Modo: **{modo}** | Formato: `SKU:CANTIDAD` (uno por línea)")
     st.caption("🔒 **Reglas de stock:** YESSICA/APRI.004 = stock - 2 | APRI.001 = 15% del stock (máx 100, min 20)")
     
     texto_bulk = st.text_area(
@@ -24,17 +27,17 @@ def render_bulk_tab():
         if st.button("🚀 Procesar lista", type="primary", use_container_width=True):
             if not texto_bulk:
                 st.warning("Ingresa productos en el formato correcto")
-            elif st.session_state.modo == "XIAOMI" and not st.session_state.catalogos:
+            elif modo == "XIAOMI" and not st.session_state.get('catalogos', []):
                 st.warning("Carga catálogos de XIAOMI primero")
-            elif st.session_state.modo == "XIAOMI" and not st.session_state.stocks:
+            elif modo == "XIAOMI" and not st.session_state.get('stocks', []):
                 st.warning("Carga reportes de stock primero")
-            elif st.session_state.modo == "UGREEN" and not st.session_state.ugreen_catalogo:
+            elif modo == "UGREEN" and not st.session_state.get('ugreen_catalogo'):
                 st.warning("Carga el catálogo de UGREEN primero")
             else:
                 # Procesar según modo
-                if st.session_state.modo == "XIAOMI":
+                if modo == "XIAOMI":
                     procesar_bulk_xiaomi(texto_bulk)
-                elif st.session_state.modo == "UGREEN":
+                elif modo == "UGREEN":
                     procesar_bulk_ugreen(texto_bulk)
                 else:
                     st.info("Modo OTRAS MARCAS - Próximamente")
@@ -80,9 +83,9 @@ def procesar_bulk_xiaomi(texto_bulk):
         for pedido in pedidos:
             prod = buscar_producto(
                 pedido['sku'], 
-                st.session_state.catalogos, 
-                st.session_state.stocks, 
-                st.session_state.precio_key
+                st.session_state.get('catalogos', []), 
+                st.session_state.get('stocks', []), 
+                st.session_state.get('precio_key', 'P. VIP')
             )
             
             if prod.get('tiene_precio', False):
@@ -160,12 +163,12 @@ def procesar_bulk_ugreen(texto_bulk):
         for pedido in pedidos:
             resultados_ugreen = buscar_ugreen_producto(
                 pedido['sku'], 
-                st.session_state.ugreen_catalogo
+                st.session_state.get('ugreen_catalogo')
             )
             
             if resultados_ugreen and len(resultados_ugreen) > 0:
                 prod = resultados_ugreen[0]
-                precio = prod['precios'].get(st.session_state.precio_key, 0)
+                precio = prod['precios'].get(st.session_state.get('precio_key', 'P. VIP'), 0)
                 
                 if precio > 0 and prod.get('tiene_stock', False):
                     stock_seguro = max(0, prod['stock'] - 2)
