@@ -1,14 +1,20 @@
 # app.py - QTC Smart Sales Pro v5.0 (Modular)
 """Punto de entrada principal de la aplicación"""
+# app.py - SOLO MODIFICAR LOS IMPORTS AL INICIO
 
 import streamlit as st
 from datetime import datetime
+import sys
+import os
 
-# Configuración de página (DEBE SER LO PRIMERO)
+# Configuración de página
 from config.settings import PAGE_CONFIG
 st.set_page_config(**PAGE_CONFIG)
 
-# Importaciones modulares
+# ⚠️ IMPORTANTE: Agregar la raíz del proyecto al path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Ahora los imports deberían funcionar
 from modules.auth import inicializar_sesion, mostrar_pantalla_login, cerrar_sesion
 from ui.styles import apply_custom_styles
 from ui.components import mostrar_header
@@ -17,6 +23,7 @@ from ui.tabs.search_tab import render_search_tab
 from ui.tabs.cart_tab import render_cart_tab
 from ui.tabs.skuscraper_tab import render_skuscraper_tab
 
+# ... el resto del código igual
 
 def inicializar_todo():
     """Inicializa todas las variables de sesión"""
