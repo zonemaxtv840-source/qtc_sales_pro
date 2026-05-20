@@ -1,14 +1,15 @@
-# ui/tabs/bulk_tab.py
+# ui/tabs/bulk_tab.py - Primeras líneas
 import streamlit as st
+import sys
+import os
 
-# Usar imports absolutos desde la raíz del proyecto
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 from modules.stock_logic import buscar_stock_para_sku, calcular_cantidad_total_segura, calcular_cantidad_apri001_only
 from modules.xiaomi_handler import buscar_producto
 from modules.ugreen_handler import buscar_ugreen_producto
 from utils.formatters import construir_badge_stock, formatear_precio
 from ui.components import mostrar_resumen_bulk
-
-
 def render_bulk_tab():
     modo = st.session_state.get('modo', 'XIAOMI')
     st.markdown("### 📦 Ingresa productos en formato masivo")
