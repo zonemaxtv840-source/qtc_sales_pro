@@ -1,7 +1,6 @@
 # ui/tabs/bulk_tab.py - MODO MASIVO COMPLETO
 import streamlit as st
-import pandas as pd
-from modules.stock_logic import buscar_stock_para_sku, calcular_cantidad_total_segura, calcular_cantidad_apri001_only, tiene_solo_apri001
+from modules.stock_logic import buscar_stock_para_sku, calcular_cantidad_total_segura, calcular_cantidad_apri001_only
 from modules.xiaomi_handler import buscar_producto
 from modules.ugreen_handler import buscar_ugreen_producto
 from utils.formatters import construir_badge_stock, formatear_precio
