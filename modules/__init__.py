@@ -1,2 +1,1 @@
-# __init__.py
-"""Módulo inicializado"""
+# modules/__init__.py
