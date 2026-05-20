@@ -12,11 +12,32 @@ st.set_page_config(**PAGE_CONFIG)
 from modules.auth import inicializar_sesion, mostrar_pantalla_login, cerrar_sesion
 from ui.styles import apply_custom_styles
 from ui.components import mostrar_header
-# app.py - Al inicio con los otros imports
 from ui.tabs.bulk_tab import render_bulk_tab
 from ui.tabs.search_tab import render_search_tab
 from ui.tabs.cart_tab import render_cart_tab
-from ui.tabs.skuscraper_tab import render_skuscraper_tab  # NUEVO
+from ui.tabs.skuscraper_tab import render_skuscraper_tab
+
+
+def inicializar_todo():
+    """Inicializa todas las variables de sesión"""
+    if 'auth' not in st.session_state:
+        st.session_state.auth = False
+    if 'modo' not in st.session_state:
+        st.session_state.modo = "XIAOMI"
+    if 'precio_key' not in st.session_state:
+        st.session_state.precio_key = "P. VIP"
+    if 'catalogos' not in st.session_state:
+        st.session_state.catalogos = []
+    if 'stocks' not in st.session_state:
+        st.session_state.stocks = []
+    if 'carrito' not in st.session_state:
+        st.session_state.carrito = []
+    if 'ugreen_catalogo' not in st.session_state:
+        st.session_state.ugreen_catalogo = None
+    if 'user_role' not in st.session_state:
+        st.session_state.user_role = "INVITADO"
+    if 'user_name' not in st.session_state:
+        st.session_state.user_name = "Invitado"
 
 
 def main():
@@ -25,8 +46,8 @@ def main():
     # Aplicar estilos CSS
     apply_custom_styles()
     
-    # Inicializar sesión
-    inicializar_sesion()
+    # Inicializar TODO antes de cualquier uso
+    inicializar_todo()
     
     # Verificar autenticación
     if not st.session_state.auth:
@@ -41,28 +62,25 @@ def main():
     
     st.markdown("---")
     
-    # app.py - Sección de tabs (reemplazar la existente)
-
-# Tabs principales (AHORA CON 4 TABS)
-tab1, tab2, tab3, tab4 = st.tabs([
-    "📦 MODO MASIVO (Bulk)", 
-    "🔍 BÚSQUEDA INTELIGENTE", 
-    "🛒 CARRITO DE COTIZACIÓN",
-    "🔧 SKU SCRAPER"  # NUEVO TAB
-])
-
-with tab1:
-    render_bulk_tab()
-
-with tab2:
-    render_search_tab()
-
-with tab3:
-    render_cart_tab()
-
-with tab4:
-    from ui.tabs.skuscraper_tab import render_skuscraper_tab
-    render_skuscraper_tab()
+    # Tabs principales
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📦 MODO MASIVO (Bulk)", 
+        "🔍 BÚSQUEDA INTELIGENTE", 
+        "🛒 CARRITO DE COTIZACIÓN",
+        "🔧 SKU SCRAPER"
+    ])
+    
+    with tab1:
+        render_bulk_tab()
+    
+    with tab2:
+        render_search_tab()
+    
+    with tab3:
+        render_cart_tab()
+    
+    with tab4:
+        render_skuscraper_tab()
     
     # Footer
     st.markdown("---")
