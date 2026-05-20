@@ -1,21 +1,16 @@
-# app.py - QTC Smart Sales Pro v5.0 (Modular)
-"""Punto de entrada principal de la aplicación"""
-# app.py - SOLO MODIFICAR LOS IMPORTS AL INICIO
-
+# app.py - QTC Smart Sales Pro v5.0 (Base funcionando con 4 tabs)
 import streamlit as st
 from datetime import datetime
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Configuración de página
-from config.settings import PAGE_CONFIG
-st.set_page_config(**PAGE_CONFIG)
+st.set_page_config(
+    page_title="QTC Smart Sales Pro",
+    page_icon="💼",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# ⚠️ IMPORTANTE: Agregar la raíz del proyecto al path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-# Ahora los imports deberían funcionar
+# Importaciones modulares
 from modules.auth import inicializar_sesion, mostrar_pantalla_login, cerrar_sesion
 from ui.styles import apply_custom_styles
 from ui.components import mostrar_header
@@ -24,38 +19,13 @@ from ui.tabs.search_tab import render_search_tab
 from ui.tabs.cart_tab import render_cart_tab
 from ui.tabs.skuscraper_tab import render_skuscraper_tab
 
-# ... el resto del código igual
-
-def inicializar_todo():
-    """Inicializa todas las variables de sesión"""
-    if 'auth' not in st.session_state:
-        st.session_state.auth = False
-    if 'modo' not in st.session_state:
-        st.session_state.modo = "XIAOMI"
-    if 'precio_key' not in st.session_state:
-        st.session_state.precio_key = "P. VIP"
-    if 'catalogos' not in st.session_state:
-        st.session_state.catalogos = []
-    if 'stocks' not in st.session_state:
-        st.session_state.stocks = []
-    if 'carrito' not in st.session_state:
-        st.session_state.carrito = []
-    if 'ugreen_catalogo' not in st.session_state:
-        st.session_state.ugreen_catalogo = None
-    if 'user_role' not in st.session_state:
-        st.session_state.user_role = "INVITADO"
-    if 'user_name' not in st.session_state:
-        st.session_state.user_name = "Invitado"
-
 
 def main():
-    """Función principal de la aplicación"""
-    
     # Aplicar estilos CSS
     apply_custom_styles()
     
-    # Inicializar TODO antes de cualquier uso
-    inicializar_todo()
+    # Inicializar sesión
+    inicializar_sesion()
     
     # Verificar autenticación
     if not st.session_state.auth:
@@ -70,7 +40,7 @@ def main():
     
     st.markdown("---")
     
-    # Tabs principales
+    # 4 Tabs principales
     tab1, tab2, tab3, tab4 = st.tabs([
         "📦 MODO MASIVO (Bulk)", 
         "🔍 BÚSQUEDA INTELIGENTE", 
@@ -93,8 +63,8 @@ def main():
     # Footer
     st.markdown("---")
     st.markdown(
-        f'<div class="footer">⚡ QTC Smart Sales Pro v5.0 | Modo: {st.session_state.modo} | '
-        f'YESSICA/APRI.004: stock-2 | APRI.001: 15% máx 100 | {datetime.now().strftime("%Y-%m-%d %H:%M")}</div>',
+        f'<div class="footer">⚡ QTC Smart Sales Pro v5.0 | Modo: {st.session_state.get("modo", "XIAOMI")} | '
+        f'{datetime.now().strftime("%Y-%m-%d %H:%M")}</div>',
         unsafe_allow_html=True
     )
 
