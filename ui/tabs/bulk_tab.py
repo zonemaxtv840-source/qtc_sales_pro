@@ -1,399 +1,171 @@
 # ui/tabs/bulk_tab.py
 import streamlit as st
-import pandas as pd
-from modules.stock_logic import calcular_cantidad_total, calcular_maximo_apri001, calcular_stock_seguro
+from modules.stock_logic import buscar_stock_para_sku, calcular_cantidad_total_segura
 
 
 def render_bulk_tab():
     st.markdown("### 📦 MODO MASIVO (Bulk)")
-    st.caption("Procesa múltiples SKUs con sus cantidades para generar cotización")
-    
-    # Mostrar SKUs disponibles desde el Scraper
-    skus_desde_scraper = st.session_state.get('skus_para_procesar', [])
-    
-    if skus_desde_scraper:
-        st.info(f"🔗 **{len(skus_desde_scraper)} SKUs disponibles desde SKU SCRAPER**")
-        if st.button("📋 Cargar SKUs desde Scraper", use_container_width=True):
-            cargar_skus_desde_scraper(skus_desde_scraper)
-    
-    st.markdown("---")
-    
-    # Área de ingreso manual
-    st.markdown("### ✏️ Ingreso manual")
-    st.caption("Formato: `SKU:CANTIDAD` (uno por línea)")
+    st.caption("Ingresa productos en formato SKU:CANTIDAD")
+    st.caption(f"Modo actual: {st.session_state.get('modo', 'XIAOMI')}")
     
     texto_bulk = st.text_area(
         "📝 Lista de productos",
         height=200,
-        placeholder="Ejemplo:\nRN9401276NA8:100\nCN0200047BK8:50\nRN0200065BK8:25\nCN9406882NA8:10",
-        help="Formato: SKU:CANTIDAD (uno por línea)"
+        placeholder="Ejemplo:\nRN9401276NA8:100\nCN0200047BK8:50\nRN0200065BK8:25"
     )
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     
     with col1:
         if st.button("🚀 Procesar lista", type="primary", use_container_width=True):
-            if texto_bulk.strip():
-                procesar_texto_bulk(texto_bulk)
+            if not texto_bulk.strip():
+                st.warning("Ingresa productos en formato SKU:CANTIDAD")
+            elif not st.session_state.get('catalogos', []):
+                st.warning("Carga catálogos de precios en el sidebar")
+            elif not st.session_state.get('stocks', []):
+                st.warning("Carga reportes de stock en el sidebar")
             else:
-                st.warning("Ingresa productos en el formato SKU:CANTIDAD")
+                procesar_lista_bulk(texto_bulk)
     
     with col2:
-        if st.button("📋 Procesar desde Scraper", use_container_width=True):
-            if skus_desde_scraper:
-                procesar_skus_desde_scraper(skus_desde_scraper)
-            else:
-                st.warning("No hay SKUs en el Scraper. Ve al tab SKU SCRAPER primero")
+        if st.button("🗑️ Limpiar resultados", use_container_width=True):
+            if 'resultados_bulk' in st.session_state:
+                del st.session_state.resultados_bulk
+            st.rerun()
     
-    with col3:
-        if st.button("🗑️ Limpiar todo", use_container_width=True):
-            limpiar_todo()
-    
-    # Mostrar tabla de productos actuales
-    if 'productos_actuales' in st.session_state and st.session_state.productos_actuales:
-        st.markdown("---")
-        st.markdown("### 📋 Productos en lista actual")
-        mostrar_tabla_productos()
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("✅ Procesar y cotizar", type="primary", use_container_width=True):
-                procesar_y_cotizar()
-        with col2:
-            if st.button("🗑️ Limpiar lista", use_container_width=True):
-                st.session_state.productos_actuales = []
-                if 'resultados_procesados' in st.session_state:
-                    del st.session_state.resultados_procesados
-                st.rerun()
-    
-    # Mostrar resultados del procesamiento
-    if 'resultados_procesados' in st.session_state and st.session_state.resultados_procesados:
-        st.markdown("---")
-        st.markdown("### 📊 Resultados del procesamiento")
-        mostrar_resultados_procesados()
+    # Mostrar resultados
+    if 'resultados_bulk' in st.session_state:
+        mostrar_resultados()
 
 
-def cargar_skus_desde_scraper(skus):
-    """Carga SKUs desde el Scraper con cantidad por defecto = 1"""
-    productos = []
-    for sku in skus:
-        productos.append({
-            'sku': sku.strip().upper(),
-            'cantidad': 1
-        })
-    st.session_state.productos_actuales = productos
-    st.success(f"✅ Cargados {len(productos)} SKUs desde el Scraper (cantidad por defecto: 1)")
-    st.rerun()
-
-
-def procesar_texto_bulk(texto):
-    """Procesa texto en formato SKU:CANTIDAD"""
-    productos = []
-    errores = []
-    
-    for line in texto.strip().split('\n'):
+def procesar_lista_bulk(texto_bulk):
+    """Procesa lista de SKUs"""
+    pedidos = []
+    for line in texto_bulk.strip().split('\n'):
         line = line.strip()
-        if not line:
-            continue
-            
         if ':' in line:
             parts = line.split(':')
             if len(parts) == 2:
                 try:
                     sku = parts[0].strip().upper()
-                    cantidad = int(parts[1].strip())
-                    if cantidad > 0:
-                        productos.append({'sku': sku, 'cantidad': cantidad})
-                    else:
-                        errores.append(f"{line} - Cantidad debe ser mayor a 0")
-                except ValueError:
-                    errores.append(f"{line} - Cantidad inválida")
-            else:
-                errores.append(f"{line} - Formato incorrecto (usa SKU:CANTIDAD)")
-        else:
-            # Si solo tiene SKU, asignar cantidad 1 por defecto
-            productos.append({'sku': line.strip().upper(), 'cantidad': 1})
+                    cant = int(parts[1].strip())
+                    if cant > 0:
+                        pedidos.append({'sku': sku, 'cantidad': cant})
+                except:
+                    st.warning(f"Formato incorrecto: {line}")
     
-    if errores:
-        for error in errores[:5]:
-            st.warning(error)
-        if len(errores) > 5:
-            st.warning(f"... y {len(errores) - 5} errores más")
-    
-    if productos:
-        st.session_state.productos_actuales = productos
-        st.success(f"✅ Cargados {len(productos)} productos")
-        st.rerun()
-    else:
-        st.error("No se encontraron productos válidos")
-
-
-def procesar_skus_desde_scraper(skus):
-    """Procesa SKUs desde Scraper con cantidad por defecto = 1"""
-    productos = []
-    for sku in skus:
-        productos.append({
-            'sku': sku.strip().upper(),
-            'cantidad': 1
-        })
-    st.session_state.productos_actuales = productos
-    st.success(f"✅ Cargados {len(productos)} SKUs desde el Scraper")
-    st.rerun()
-
-
-def mostrar_tabla_productos():
-    """Muestra tabla editable de productos"""
-    productos = st.session_state.productos_actuales
-    
-    # Crear DataFrame editable
-    df = pd.DataFrame(productos)
-    
-    # Mostrar tabla con opción de editar cantidades
-    st.markdown("**Edita las cantidades directamente en la tabla:**")
-    
-    # Usar columnas para edición
-    for i, prod in enumerate(productos):
-        col1, col2, col3 = st.columns([3, 1, 0.5])
-        with col1:
-            st.markdown(f"`{prod['sku']}`")
-        with col2:
-            nueva_cant = st.number_input(
-                "Cantidad",
-                min_value=0,
-                value=prod['cantidad'],
-                step=1,
-                key=f"edit_{i}_{prod['sku']}",
-                label_visibility="collapsed"
-            )
-            if nueva_cant != prod['cantidad']:
-                if nueva_cant == 0:
-                    st.session_state.productos_actuales.pop(i)
-                    st.rerun()
-                else:
-                    prod['cantidad'] = nueva_cant
-        with col3:
-            if st.button("🗑️", key=f"del_{i}_{prod['sku']}"):
-                st.session_state.productos_actuales.pop(i)
-                st.rerun()
-    
-    # Resumen
-    total_productos = len(productos)
-    total_unidades = sum(p['cantidad'] for p in productos)
-    st.markdown(f"""
-    <div style="background:rgba(0,0,0,0.2);border-radius:12px;padding:0.5rem 1rem;margin-top:0.5rem;">
-        📦 Total productos: <strong>{total_productos}</strong> | 
-        🔢 Total unidades: <strong>{total_unidades}</strong>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def procesar_y_cotizar():
-    """Procesa los productos contra stock y genera cotización"""
-    productos = st.session_state.productos_actuales
-    
-    if not productos:
-        st.warning("No hay productos para procesar")
+    if not pedidos:
+        st.warning("No se encontraron productos válidos")
         return
     
-    # Verificar que haya stock cargado
-    if not st.session_state.get('stocks', []):
-        st.warning("⚠️ No hay archivos de stock cargados. Usando simulación.")
-        usar_simulacion = True
-    else:
-        usar_simulacion = False
-    
-    with st.spinner("Procesando productos contra stock..."):
+    with st.spinner("Procesando..."):
         resultados = []
+        catalogos = st.session_state.get('catalogos', [])
+        stocks = st.session_state.get('stocks', [])
+        precio_key = st.session_state.get('precio_key', 'P. VIP')
         
-        for prod in productos:
-            sku = prod['sku']
-            cantidad_solicitada = prod['cantidad']
-            
-            if usar_simulacion:
-                # Simulación de stock
-                stock_yessica = 50
-                stock_apri004 = 30
-                stock_apri001 = 100
-                precio = 99.90
-                descripcion = f"Producto {sku}"
-            else:
-                # Aquí irá la búsqueda real en catálogos y stock
-                # Por ahora usamos simulación
-                stock_yessica = 50
-                stock_apri004 = 30
-                stock_apri001 = 100
-                precio = 99.90
-                descripcion = f"Producto {sku}"
-            
-            # Calcular cantidad cotizable
-            cantidad_cotizar, mensaje = calcular_cantidad_total(
-                cantidad_solicitada, stock_yessica, stock_apri004, stock_apri001
-            )
-            
-            max_apri = calcular_maximo_apri001(stock_apri001)
-            stock_seguro = calcular_stock_seguro(stock_yessica, stock_apri004)
-            
-            resultados.append({
-                'sku': sku,
-                'descripcion': descripcion,
-                'cantidad_solicitada': cantidad_solicitada,
-                'cantidad_cotizar': cantidad_cotizar,
-                'precio': precio,
-                'total': precio * cantidad_cotizar,
-                'estado': mensaje,
-                'stock_yessica': stock_yessica,
-                'stock_apri004': stock_apri004,
-                'stock_apri001': stock_apri001,
-                'stock_seguro': stock_seguro,
-                'max_apri001': max_apri
-            })
+        from modules.stock_logic import buscar_stock_para_sku, calcular_cantidad_total_segura
+        from utils.excel_utils import corregir_numero
         
-        st.session_state.resultados_procesados = resultados
-        st.success(f"✅ Procesados {len(resultados)} productos")
-        st.rerun()
-
-
-def mostrar_resultados_procesados():
-    """Muestra resultados del procesamiento"""
-    resultados = st.session_state.resultados_procesados
-    
-    for r in resultados:
-        if r['cantidad_cotizar'] > 0:
-            color = "#4CAF50"
-            icono = "✅"
-        else:
-            color = "#f44336"
-            icono = "❌"
-        
-        st.markdown(f"""
-        <div style="background:white;border-radius:16px;padding:1rem;margin-bottom:1rem;border-left:5px solid {color};">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div>
-                    <strong style="font-size:1.1rem;">{icono} {r['sku']}</strong>
-                    <br>
-                    <span style="font-size:0.8rem;color:#666;">{r['descripcion'][:80]}</span>
-                </div>
-                <div style="text-align:right;">
-                    <span style="background:{color};color:white;padding:4px 12px;border-radius:20px;">
-                        {r['cantidad_cotizar']}/{r['cantidad_solicitada']}
-                    </span>
-                </div>
-            </div>
-            <div style="margin-top:12px;">
-                <div style="display:flex;justify-content:space-between;flex-wrap:wrap;">
-                    <span>💰 Precio: <strong>S/ {r['precio']:.2f}</strong></span>
-                    <span>📦 Stock: Y:{r['stock_yessica']} | A4:{r['stock_apri004']} | A1:{r['stock_apri001']}</span>
-                    <span>🔒 Stock seguro: {r['stock_seguro']} | Máx A1: {r['max_apri001']}</span>
-                </div>
-            </div>
-            <div style="margin-top:8px;padding:8px;background:#f5f5f5;border-radius:8px;">
-                📌 {r['estado']}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Totales
-    total_cotizable = sum(r['cantidad_cotizar'] for r in resultados)
-    total_valor = sum(r['total'] for r in resultados)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown(f"""
-        <div style="background:#4CAF50;border-radius:12px;padding:1rem;text-align:center;">
-            <div style="color:white;">📦 TOTAL COTIZABLE</div>
-            <div style="color:white;font-size:1.5rem;font-weight:bold;">{total_cotizable} unidades</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f"""
-        <div style="background:#2196F3;border-radius:12px;padding:1rem;text-align:center;">
-            <div style="color:white;">💰 VALOR TOTAL</div>
-            <div style="color:white;font-size:1.5rem;font-weight:bold;">S/ {total_valor:,.2f}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Botones de acción
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("➕ Agregar al carrito", type="primary", use_container_width=True):
-            agregar_resultados_al_carrito()
-    
-    with col2:
-        if st.button("🔄 Reintentar fallidos", use_container_width=True):
-            reintentar_fallidos()
-    
-    with col3:
-        if st.button("🗑️ Limpiar resultados", use_container_width=True):
-            del st.session_state.resultados_procesados
-            st.rerun()
-
-
-def agregar_resultados_al_carrito():
-    """Agrega productos cotizables al carrito global"""
-    if 'carrito' not in st.session_state:
-        st.session_state.carrito = []
-    
-    agregados = 0
-    for r in st.session_state.resultados_procesados:
-        if r['cantidad_cotizar'] > 0:
-            # Buscar si ya existe en carrito
-            existe = False
-            for item in st.session_state.carrito:
-                if item['sku'] == r['sku']:
-                    item['cantidad'] += r['cantidad_cotizar']
-                    item['total'] = item['precio'] * item['cantidad']
-                    existe = True
+        for p in pedidos:
+            # Buscar stock
+            stock_info = buscar_stock_para_sku(p['sku'], stocks)
+            
+            # Buscar precio en catálogos
+            precio = 0
+            descripcion = f"SKU: {p['sku']}"
+            
+            for cat in catalogos:
+                df = cat['df']
+                col_sku = cat['col_sku']
+                col_desc = cat.get('col_desc')
+                
+                mask = df[col_sku].astype(str).str.strip().str.upper() == p['sku'].upper()
+                if mask.any():
+                    row = df[mask].iloc[0]
+                    if precio_key in cat.get('precios', {}):
+                        col_precio = cat['precios'][precio_key]
+                        precio = corregir_numero(row[col_precio])
+                    if col_desc:
+                        descripcion = str(row[col_desc])[:200]
                     break
             
-            if not existe:
-                st.session_state.carrito.append({
+            # Calcular cantidad cotizable
+            cantidad_cotizar, mensaje, detalle = calcular_cantidad_total_segura(
+                p['cantidad'],
+                {'yessica': stock_info['yessica'], 'apri004': stock_info['apri004'], 'apri001': stock_info['apri001']}
+            )
+            
+            resultados.append({
+                'sku': p['sku'],
+                'descripcion': descripcion,
+                'cantidad_solicitada': p['cantidad'],
+                'cantidad_cotizar': cantidad_cotizar,
+                'precio': precio,
+                'estado': mensaje,
+                'stock_yessica': stock_info['yessica'],
+                'stock_apri004': stock_info['apri004'],
+                'stock_apri001': stock_info['apri001'],
+                'tiene_precio': precio > 0,
+                'tiene_stock': stock_info['total'] > 0
+            })
+        
+        st.session_state.resultados_bulk = resultados
+        st.success(f"✅ Procesados {len(pedidos)} productos")
+
+
+def mostrar_resultados():
+    """Muestra resultados del procesamiento"""
+    st.markdown("---")
+    st.markdown("### 📋 Resultados")
+    
+    for r in st.session_state.resultados_bulk:
+        if r['cantidad_cotizar'] > 0 and r['tiene_precio']:
+            color = "#4CAF50"
+            estado = "✅ COTIZABLE"
+        elif r['tiene_stock'] and not r['tiene_precio']:
+            color = "#FF9800"
+            estado = "⚠️ STOCK SIN PRECIO"
+        else:
+            color = "#f44336"
+            estado = "❌ NO COTIZABLE"
+        
+        st.markdown(f"""
+        <div style="background:#ffffff; border-radius:12px; padding:10px; margin-bottom:10px; border-left:4px solid {color};">
+            <div style="display:flex; justify-content:space-between;">
+                <b style="color:#1a1a2e;">📦 {r['sku']}</b>
+                <span style="background:{color}; color:white; padding:2px 8px; border-radius:12px;">{estado}</span>
+            </div>
+            <p style="color:#333; font-size:11px;">📝 {r['descripcion'][:80]}</p>
+            <div style="display:flex; gap:8px; margin:5px 0;">
+                <span style="background:#4CAF50; color:white; padding:2px 6px; border-radius:10px;">🟢 Y: {r['stock_yessica']}</span>
+                <span style="background:#FF9800; color:white; padding:2px 6px; border-radius:10px;">🟡 A4: {r['stock_apri004']}</span>
+                <span style="background:#f44336; color:white; padding:2px 6px; border-radius:10px;">🔴 A1: {r['stock_apri001']}</span>
+            </div>
+            <p style="color:#e67e22; font-weight:bold;">💰 S/ {r['precio']:.2f}</p>
+            <p style="color:#555; font-size:10px;">📌 {r['estado']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Botón para agregar al carrito
+        if r['cantidad_cotizar'] > 0 and r['tiene_precio']:
+            if st.button(f"➕ Agregar {r['cantidad_cotizar']}x {r['sku']}", key=f"add_bulk_{r['sku']}"):
+                item = {
                     'sku': r['sku'],
                     'descripcion': r['descripcion'],
                     'cantidad': r['cantidad_cotizar'],
                     'precio': r['precio'],
-                    'total': r['total'],
-                    'stock_yessica': r.get('stock_yessica', 0),
-                    'stock_apri004': r.get('stock_apri004', 0),
-                    'stock_apri001': r.get('stock_apri001', 0)
-                })
-            agregados += 1
+                    'total': r['precio'] * r['cantidad_cotizar'],
+                    'stock_yessica': r['stock_yessica'],
+                    'stock_apri004': r['stock_apri004'],
+                    'stock_apri001': r['stock_apri001']
+                }
+                if 'carrito' not in st.session_state:
+                    st.session_state.carrito = []
+                st.session_state.carrito.append(item)
+                st.success(f"✅ Agregado {r['cantidad_cotizar']}x {r['sku']}")
+                st.rerun()
     
-    st.success(f"✅ {agregados} productos agregados al carrito")
-    st.rerun()
-
-
-def reintentar_fallidos():
-    """Reintenta procesar productos que no pudieron cotizarse"""
-    fallidos = [r for r in st.session_state.resultados_procesados if r['cantidad_cotizar'] == 0]
-    
-    if not fallidos:
-        st.info("No hay productos fallidos para reintentar")
-        return
-    
-    # Crear lista para reintentar con cantidad reducida
-    productos_reintento = []
-    for r in fallidos:
-        # Intentar con la mitad de la cantidad
-        nueva_cant = max(1, r['cantidad_solicitada'] // 2)
-        productos_reintento.append({
-            'sku': r['sku'],
-            'cantidad': nueva_cant
-        })
-    
-    st.session_state.productos_actuales = productos_reintento
-    if 'resultados_procesados' in st.session_state:
-        del st.session_state.resultados_procesados
-    
-    st.info(f"🔄 Reintentando {len(fallidos)} productos con cantidades reducidas")
-    st.rerun()
-
-
-def limpiar_todo():
-    """Limpia todas las listas"""
-    if 'productos_actuales' in st.session_state:
-        st.session_state.productos_actuales = []
-    if 'resultados_procesados' in st.session_state:
-        del st.session_state.resultados_procesados
-    st.success("Todo limpiado correctamente")
-    st.rerun()
+    if st.button("🗑️ Limpiar resultados", use_container_width=True):
+        del st.session_state.resultados_bulk
+        st.rerun()
