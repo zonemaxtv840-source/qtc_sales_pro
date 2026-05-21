@@ -289,10 +289,10 @@ def analizar_duplicados(catalogos, stocks):
             # Estadísticas
             st.markdown(f"""
             <div style="background:linear-gradient(135deg,#1a237e 0%,#283593 100%); border-radius:12px; padding:1rem; margin:1rem 0; text-align:center; box-shadow:0 4px 15px rgba(0,0,0,0.2);">
-                <h4 style="color:white; margin:0 0 0.5rem 0;">📊 Resumen del análisis</h4>
+                <h4 style="color:white; margin:0 0 0.5rem 0; font-size:1.1rem;">📊 Resumen del análisis</h4>
                 <div style="display:flex; justify-content:space-around;">
-                    <div><span style="color:white;">📝 Total descripciones</span><br><span style="font-size:2rem; font-weight:bold; color:#ff9800;">{len(descripciones)}</span></div>
-                    <div><span style="color:white;">🔄 Con múltiples SKUs</span><br><span style="font-size:2rem; font-weight:bold; color:#ff9800;">{len(duplicadas)}</span></div>
+                    <div><span style="color:white; font-size:1rem;">📝 Total descripciones</span><br><span style="font-size:2rem; font-weight:bold; color:#ff9800;">{len(descripciones)}</span></div>
+                    <div><span style="color:white; font-size:1rem;">🔄 Con múltiples SKUs</span><br><span style="font-size:2rem; font-weight:bold; color:#ff9800;">{len(duplicadas)}</span></div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -312,12 +312,13 @@ def analizar_duplicados(catalogos, stocks):
                         fuentes_str = ', '.join(fuentes[:2])
                         if len(fuentes) > 2:
                             fuentes_str += f" +{len(fuentes)-2}"
-                        skus_info.append(f"<code style='background:#f0f0f0; padding:2px 6px; border-radius:4px; color:#d63384;'>{sku}</code> <span style='font-size:0.6rem; color:#666;'>({fuentes_str})</span>")
+                        skus_info.append(f"<code style='background:#f0f0f0; padding:4px 10px; border-radius:6px; color:#d63384; font-size:0.85rem;'>{sku}</code> <span style='font-size:0.7rem; color:#666;'>({fuentes_str})</span>")
                     
                     st.markdown(f"""
-                    <div style="background:#FFF3E0; border-radius:10px; padding:0.75rem; margin-bottom:0.5rem; border-left:3px solid #FF9800; color:#1a1a2e;">
-                        <div style="font-size:0.8rem; margin-bottom:0.25rem; color:#1a1a2e;"><strong style="color:#1a1a2e;">📝 {desc[:100]}</strong></div>
-                        <div style="font-size:0.7rem; color:#1a1a2e;"><strong style="color:#1a1a2e;">🏷️ SKUs ({len(skus_vistos)}):</strong> <span style="color:#1a1a2e;">{' '.join(skus_info[:5])}{'...' if len(skus_info) > 5 else ''}</span></div>
+                    <div style="background:#FFF3E0; border-radius:12px; padding:1rem; margin-bottom:0.75rem; border-left:4px solid #FF9800; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+                        <div style="font-size:0.95rem; margin-bottom:0.5rem; color:#1a1a2e;"><strong style="color:#1a1a2e;">📝 {desc[:100]}</strong></div>
+                        <div style="font-size:0.85rem; color:#1a1a2e; margin-top:0.5rem;"><strong style="color:#1a1a2e;">🏷️ SKUs ({len(skus_vistos)}):</strong></div>
+                        <div style="margin-top:0.5rem; display:flex; flex-wrap:wrap; gap:0.5rem;">{' '.join(skus_info[:5])}{'...' if len(skus_info) > 5 else ''}</div>
                     </div>
                     """, unsafe_allow_html=True)
                 
