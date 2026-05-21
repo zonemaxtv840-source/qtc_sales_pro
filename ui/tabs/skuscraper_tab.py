@@ -294,8 +294,8 @@ def analizar_duplicados(catalogos, stocks):
             <div class="summary-card">
                 <h4>📊 Resumen del análisis</h4>
                 <div style="display:flex; justify-content:space-around; margin-top:0.5rem;">
-                    <div><span style="color:white;">📝 Total descripciones</span><br><span class="number">{len(descripciones)}</span></div>
-                    <div><span style="color:white;">🔄 Con múltiples SKUs</span><br><span class="number" style="color:#ff9800;">{len(duplicadas)}</span></div>
+                    <div><span style="color:#1a1a2e;">📝 Total descripciones</span><br><span class="number">{len(descripciones)}</span></div>
+                    <div><span style="color:#1a1a2e;">🔄 Con múltiples SKUs</span><br><span class="number" style="color:#ff9800;">{len(duplicadas)}</span></div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
