@@ -8,9 +8,8 @@ import re
 # ==========================================
 # CONFIGURACIÓN DE SEGURIDAD PARA PRECIOS
 # ==========================================
-# Definimos rangos de precio MÁXIMO por categoría de producto para evitar cruces ridículos
 PRICE_LIMITS = {
-    "EARPHONE": 80,      # Audífonos cableados no pueden costar 140 soles (a menos que sean muy pro, pero por seguridad)
+    "EARPHONE": 80,
     "CABLE": 50,
     "CHARGER": 150,
     "SPEAKER": 300,
@@ -19,7 +18,6 @@ PRICE_LIMITS = {
 }
 
 def get_product_family(description):
-    """Detecta la familia del producto para aplicar el límite de precio correcto"""
     desc_lower = description.lower()
     if any(word in desc_lower for word in ['earphone', 'headphone', 'audifono', 'earbud', 'airbud']):
         return "EARPHONE"
@@ -53,9 +51,9 @@ def extraer_color(descripcion: str) -> str:
 def buscar_por_descripcion_en_catalogos(descripcion, catalogos, precio_key):
     """
     Busca precio por descripción con FILTROS DE SEGURIDAD:
-    1. Similitud mínima 85% (muy alta para evitar errores)
-    2. Coherencia de familia de producto
-    3. Límite de precio máximo según categoría
+    - Similitud mínima 75% (aceptable)
+    - Coherencia de familia de producto
+    - Límite de precio máximo según categoría
     """
     desc_buscar = descripcion.lower()
     familia_origen = get_product_family(desc_buscar)
@@ -78,23 +76,22 @@ def buscar_por_descripcion_en_catalogos(descripcion, catalogos, precio_key):
         for _, row in df.iterrows():
             desc_cat = str(row[col_desc]).lower()
             
-            # 1. VERIFICAR SIMILITUD (Mínimo 85% para ser considerado el mismo producto)
+            # 1. SIMILITUD (mínimo 75%)
             similitud = calcular_similitud(desc_buscar, desc_cat)
-            if similitud < 85:  # UMBRAL ALTÍSIMO -> SOLO TEXTOS CASI IGUALES
+            if similitud < 75:
                 continue
             
-            # 2. VERIFICAR COLOR (Si el original tiene color, el match debe tener el mismo)
+            # 2. COLOR (opcional)
             if color:
                 if color.lower() not in desc_cat:
                     continue
             
-            # 3. VERIFICAR FAMILIA (No cruzar un TV Stick con unos Audífonos)
+            # 3. FAMILIA (debe coincidir)
             familia_match = get_product_family(desc_cat)
             if familia_match != familia_origen:
-                # Si las familias NO coinciden, descartamos automáticamente
                 continue
             
-            # 4. OBTENER PRECIO Y VALIDAR RANGO
+            # 4. PRECIO
             try:
                 precio = float(row[col_precio]) if pd.notna(row[col_precio]) else 0
                 if precio > 0 and precio <= limite_precio:
@@ -107,7 +104,6 @@ def buscar_por_descripcion_en_catalogos(descripcion, catalogos, precio_key):
             except:
                 pass
     
-    # Ordenar por similitud y devolver el mejor
     if mejores_matches:
         mejores_matches.sort(key=lambda x: x['similitud'], reverse=True)
         return mejores_matches[0]
@@ -118,7 +114,7 @@ def buscar_por_descripcion_en_catalogos(descripcion, catalogos, precio_key):
 def render_skuscraper_tab():
     st.markdown("### 🔧 SKU SCRAPER - Buscador de Alternativas")
     st.caption("🔍 Encuentra TODOS los SKUs con la MISMA DESCRIPCIÓN")
-    st.caption("⚠️ **Seguridad activada**: Solo cruza productos de la misma familia y con precio lógico.")
+    st.caption("⚠️ **Seguridad activada**: Asigna precio automáticamente si la descripción coincide en ≥75% y es de la misma familia.")
     
     tiene_catalogos = st.session_state.get('catalogos', [])
     tiene_stocks = st.session_state.get('stocks', [])
@@ -265,7 +261,7 @@ def buscar_alternativas(desc_buscar, umbral, catalogos, stocks):
 
 
 def buscar_sku_exacto(sku_buscar, catalogos, stocks):
-    """Busca un SKU específico en catálogos y stock (VERSIÓN SEGURA)"""
+    """Busca un SKU específico en catálogos y stock"""
     sku_limpio = sku_buscar.strip().upper()
     descripcion = f"SKU: {sku_limpio}"
     precio = 0
@@ -273,7 +269,7 @@ def buscar_sku_exacto(sku_buscar, catalogos, stocks):
     precio_asignado = False
     sku_match = None
     
-    # 1. Buscar en catálogos
+    # 1. Buscar en catálogos por SKU
     for cat in catalogos:
         df = cat['df']; col_sku = cat['col_sku']; col_desc = cat.get('col_desc')
         mask = df[col_sku].astype(str).str.strip().str.upper() == sku_limpio
@@ -288,7 +284,7 @@ def buscar_sku_exacto(sku_buscar, catalogos, stocks):
                 fuente_precio = cat['nombre'][:30]
             break
     
-    # 2. Si no hay precio, buscar por descripción (CON SEGURIDAD)
+    # 2. Si no hay precio, buscar por descripción
     if precio == 0 and descripcion != f"SKU: {sku_limpio}":
         match = buscar_por_descripcion_en_catalogos(descripcion, catalogos, st.session_state.get('precio_key', 'P. VIP'))
         if match['precio'] > 0:
@@ -297,7 +293,7 @@ def buscar_sku_exacto(sku_buscar, catalogos, stocks):
             precio_asignado = True
             sku_match = match['sku_match']
     
-    # 3. Buscar stock...
+    # 3. Buscar stock
     stock_yessica = stock_apri004 = stock_apri001 = 0
     for stock in stocks:
         df = stock['df']; col_sku = stock['col_sku']; hoja = stock.get('hoja', '')
@@ -315,13 +311,19 @@ def buscar_sku_exacto(sku_buscar, catalogos, stocks):
             elif 'APRI.001' in hoja.upper(): stock_apri001 = cantidad
     
     # 4. Mostrar resultado
+    color = "#4CAF50" if (stock_yessica + stock_apri004) > 0 else "#FF9800" if stock_apri001 > 0 else "#f44336"
+    
     st.markdown(f"""
-    <div style="background:#ffffff; border-radius:12px; padding:15px; margin-top:10px; border-left:4px solid #4CAF50;">
-        <b>📦 {sku_limpio}</b>
-        <p>📝 {descripcion}</p>
-        <div>🟢 YESSICA: {stock_yessica} | 🟡 APRI.004: {stock_apri004} | 🔴 APRI.001: {stock_apri001}</div>
+    <div style="background:#ffffff; border-radius:12px; padding:15px; margin-top:10px; border-left:4px solid {color};">
+        <b style="color:#1a1a2e;">📦 {sku_limpio}</b>
+        <p style="color:#333;">📝 {descripcion}</p>
+        <div style="margin:10px 0;">
+            <span style="background:#4CAF50; color:white; padding:4px 12px; border-radius:15px;">🟢 Y: {stock_yessica}</span>
+            <span style="background:#FF9800; color:white; padding:4px 12px; border-radius:15px;">🟡 A4: {stock_apri004}</span>
+            <span style="background:#f44336; color:white; padding:4px 12px; border-radius:15px;">🔴 A1: {stock_apri001}</span>
+        </div>
         <p style="color:#e67e22; font-weight:bold;">💰 S/ {precio:.2f}</p>
-        <p>📚 Fuente: {fuente_precio}</p>
-        {f'<p style="color:red;">⚠️ PRECIO ASIGNADO DESDE OTRO SKU: {sku_match}</p>' if precio_asignado else ''}
+        <p style="color:#666;">📚 Fuente: {fuente_precio if fuente_precio else 'No encontrado'}</p>
+        {f'<p style="color:#e67e22;">⚠️ Precio asignado desde SKU: {sku_match}</p>' if precio_asignado else ''}
     </div>
     """, unsafe_allow_html=True)
