@@ -50,9 +50,9 @@ def calcular_similitud(texto1: str, texto2: str) -> float:
 def buscar_alternativas(desc_buscar, umbral, catalogos, stocks):
     """Busca SKUs con descripción SIMILAR en CATÁLOGOS y STOCK"""
     desc_limpia = desc_buscar.strip().lower()
-    resultados = {}  # diccionario por SKU
+    resultados = {}
     
-    with st.spinner(f"Buscando en CATÁLOGOS y STOCK con similitud ≥ {umbral}%..."):
+    with st.spinner(f"Buscando con similitud ≥ {umbral}%..."):
         
         # ========== 1. BUSCAR EN CATÁLOGOS ==========
         for cat in catalogos:
@@ -70,7 +70,6 @@ def buscar_alternativas(desc_buscar, umbral, catalogos, stocks):
                 if similitud >= umbral:
                     sku = str(row[col_sku]).strip()
                     
-                    # Obtener precio
                     precio_key = st.session_state.get('precio_key', 'P. VIP')
                     precio = 0
                     if precio_key in cat.get('precios', {}):
@@ -92,17 +91,13 @@ def buscar_alternativas(desc_buscar, umbral, catalogos, stocks):
                             'stock_apri001': 0,
                             'ubicaciones': []
                         }
-                    else:
-                        if resultados[sku]['precio'] == 0 and precio > 0:
-                            resultados[sku]['precio'] = precio
         
-        # ========== 2. BUSCAR EN STOCK (YESSICA, APRI.004, APRI.001) ==========
+        # ========== 2. BUSCAR EN STOCK ==========
         for stock in stocks:
             df = stock['df']
             col_sku = stock['col_sku']
             hoja = stock.get('hoja', 'Desconocida')
             
-            # Detectar columna de cantidad
             col_cant = None
             for col in df.columns:
                 col_upper = str(col).upper()
@@ -110,7 +105,6 @@ def buscar_alternativas(desc_buscar, umbral, catalogos, stocks):
                     col_cant = col
                     break
             
-            # Detectar columna de descripción
             col_desc = None
             for col in df.columns:
                 col_upper = str(col).upper()
@@ -128,7 +122,6 @@ def buscar_alternativas(desc_buscar, umbral, catalogos, stocks):
                 if similitud >= umbral:
                     sku = str(row[col_sku]).strip()
                     
-                    # Obtener cantidad
                     cantidad = 0
                     if col_cant and pd.notna(row[col_cant]):
                         try:
@@ -149,20 +142,14 @@ def buscar_alternativas(desc_buscar, umbral, catalogos, stocks):
                             'ubicaciones': []
                         }
                     
-                    # Acumular stock según la hoja
                     if 'YESSICA' in hoja.upper():
                         resultados[sku]['stock_yessica'] += cantidad
-                        resultados[sku]['ubicaciones'].append(f"YESSICA: {cantidad}")
                     elif 'APRI.004' in hoja.upper():
                         resultados[sku]['stock_apri004'] += cantidad
-                        resultados[sku]['ubicaciones'].append(f"APRI.004: {cantidad}")
                     elif 'APRI.001' in hoja.upper():
                         resultados[sku]['stock_apri001'] += cantidad
-                        resultados[sku]['ubicaciones'].append(f"APRI.001: {cantidad}")
-                    else:
-                        resultados[sku]['ubicaciones'].append(f"{hoja}: {cantidad}")
         
-        # ========== 3. PARA CADA SKU, BUSCAR PRECIO EN CATÁLOGOS ==========
+        # ========== 3. BUSCAR PRECIOS ==========
         for sku in list(resultados.keys()):
             if resultados[sku]['precio'] == 0:
                 for cat in catalogos:
@@ -177,20 +164,87 @@ def buscar_alternativas(desc_buscar, umbral, catalogos, stocks):
                             col_precio = cat['precios'][precio_key]
                             try:
                                 resultados[sku]['precio'] = float(row[col_precio]) if pd.notna(row[col_precio]) else 0
-                                resultados[sku]['fuente_catalogo'] = cat['nombre'][:30]
                             except:
                                 pass
     
     if not resultados:
-        st.warning(f"❌ No se encontraron SKUs con similitud ≥ {umbral}% para: '{desc_buscar}'")
-        st.info("💡 **Tips:**\n- Prueba con palabras más cortas (ej: 'earphones')\n- Baja el porcentaje de similitud")
+        st.warning(f"❌ No se encontraron resultados para: '{desc_buscar}'")
         return
     
-    # Ordenar por similitud
     resultados_lista = list(resultados.values())
     resultados_lista.sort(key=lambda x: x['similitud'], reverse=True)
     
-    st.success(f"✅ Se encontraron {len(resultados_lista)} SKUs con descripción similar")
+    st.success(f"✅ {len(resultados_lista)} SKUs encontrados")
+    
+    # Mostrar resultados en grid de 2 columnas con ESTILOS INLINE SIMPLES
+    for i in range(0, len(resultados_lista), 2):
+        cols = st.columns(2)
+        for j, col in enumerate(cols):
+            idx = i + j
+            if idx < len(resultados_lista):
+                r = resultados_lista[idx]
+                
+                stock_inmediato = r['stock_yessica'] + r['stock_apri004']
+                
+                # Determinar color del borde y estado
+                if stock_inmediato > 0:
+                    color = "#4CAF50"
+                    estado = "✅ STOCK INMEDIATO"
+                elif r['stock_apri001'] > 0:
+                    color = "#FF9800"
+                    estado = "⚠️ STOCK REMOTO (APRI.001)"
+                else:
+                    color = "#f44336"
+                    estado = "❌ SIN STOCK"
+                
+                with col:
+                    # Card con estilos inline básicos
+                    st.markdown(f"""
+                    <div style="background:#ffffff; border-radius:12px; padding:10px; margin-bottom:10px; border-left:4px solid {color};">
+                        <b style="color:#1a1a2e;">📦 {r['sku']}</b>
+                        <span style="background:{color}; color:#ffffff; padding:2px 8px; border-radius:12px; font-size:11px; margin-left:8px;">{estado}</span>
+                        <p style="color:#333333; font-size:12px; margin:8px 0 4px 0;">📝 {r['descripcion'][:80]}</p>
+                        <p style="color:#666666; font-size:10px; margin:0 0 8px 0;">🎯 {r['similitud']:.0f}% coincidencia</p>
+                        <div style="display:flex; gap:8px; margin:8px 0;">
+                            <span style="background:#4CAF50; color:#ffffff; padding:2px 8px; border-radius:12px; font-size:10px;">🟢 YESSICA: {r['stock_yessica']}</span>
+                            <span style="background:#FF9800; color:#ffffff; padding:2px 8px; border-radius:12px; font-size:10px;">🟡 APRI.004: {r['stock_apri004']}</span>
+                            <span style="background:#f44336; color:#ffffff; padding:2px 8px; border-radius:12px; font-size:10px;">🔴 APRI.001: {r['stock_apri001']}</span>
+                        </div>
+                        <p style="color:#e67e22; font-size:14px; font-weight:bold; margin:8px 0 4px 0;">💰 S/ {r['precio']:.2f}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Selector de cantidad
+                    max_cant = stock_inmediato if stock_inmediato > 0 else r['stock_apri001']
+                    if max_cant > 0:
+                        col_a, col_b = st.columns([2, 1])
+                        with col_a:
+                            cantidad = st.number_input("Cantidad", min_value=0, max_value=max_cant, value=0, step=1, key=f"qty_{r['sku']}", label_visibility="collapsed")
+                        with col_b:
+                            if cantidad > 0:
+                                if st.button(f"➕ Agregar", key=f"add_{r['sku']}"):
+                                    item = {
+                                        'sku': r['sku'],
+                                        'descripcion': r['descripcion'],
+                                        'cantidad': cantidad,
+                                        'precio': r['precio'],
+                                        'total': r['precio'] * cantidad,
+                                        'stock_yessica': r['stock_yessica'],
+                                        'stock_apri004': r['stock_apri004'],
+                                        'stock_apri001': r['stock_apri001']
+                                    }
+                                    if 'carrito' not in st.session_state:
+                                        st.session_state.carrito = []
+                                    st.session_state.carrito.append(item)
+                                    st.success(f"✅ {cantidad}x {r['sku']}")
+                                    st.rerun()
+    
+    # Botón para enviar al Bulk
+    if resultados_lista:
+        st.markdown("---")
+        if st.button(f"📋 Enviar {len(resultados_lista)} SKUs al MODO MASIVO", use_container_width=True):
+            st.session_state.skus_para_procesar = [r['sku'] for r in resultados_lista]
+            st.success(f"✅ Enviados")
     
     # Mostrar la búsqueda
     st.markdown(f"""
