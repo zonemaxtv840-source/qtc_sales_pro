@@ -1,13 +1,11 @@
 # utils/file_handlers.py
-"""Manejo de subida y procesamiento de archivos"""
-
 import streamlit as st
-from typing import Optional, Dict, List
-from utils.excel_utils import cargar_archivo, detectar_columna_sku, detectar_columna_descripcion
+import pandas as pd
+from utils.excel_utils import cargar_archivo, detectar_columna_sku, detectar_columna_descripcion, detectar_columnas_precio
 
 
-def cargar_ugreen_catalogo(archivo) -> Optional[Dict]:
-    """Carga específica para archivo UGREEN con columnas Mayor/Caja/Vip"""
+def cargar_ugreen_catalogo(archivo) -> dict:
+    """Carga catálogo UGREEN con columnas Mayor/Caja/Vip"""
     df = cargar_archivo(archivo)
     if df is None:
         return None
@@ -34,20 +32,8 @@ def cargar_ugreen_catalogo(archivo) -> Optional[Dict]:
         elif 'STOCK' in col_upper:
             col_stock = col
     
-    # Fallbacks
     if not col_sku:
-        for col in df.columns:
-            if 'SKU' in str(col).upper():
-                col_sku = col
-                break
-    if not col_sku:
-        col_sku = df.columns[5] if len(df.columns) > 5 else df.columns[0]
-    
-    if not col_desc:
-        for col in df.columns:
-            if any(p in str(col).upper() for p in ['DESC', 'GOODS', 'PRODUCTO']):
-                col_desc = col
-                break
+        col_sku = df.columns[0]
     
     precios = {}
     if col_mayor:
