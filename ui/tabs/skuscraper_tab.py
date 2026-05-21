@@ -123,38 +123,35 @@ def buscar_por_sku(catalogos, stocks):
             
             for r in resultados:
                 if r['tipo'] == 'catalogo':
-                    badge_class = "badge-info"
                     st.markdown(f"""
-                    <div class="card-result" style="border-left-color: #2196F3;">
-                        <div class="card-header">
-                            <span class="card-sku">📦 {r['sku']}</span>
-                            <span class="card-badge {badge_class}">{r['fuente']}</span>
+                    <div style="background:white; border-radius:12px; padding:0.75rem 1rem; margin-bottom:0.75rem; border-left:4px solid #2196F3; box-shadow:0 2px 4px rgba(0,0,0,0.1); color:#1a1a2e;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                            <span style="font-family:monospace; font-weight:bold; background:#f0f0f0; padding:2px 8px; border-radius:6px; color:#1565c0;">📦 {r['sku']}</span>
+                            <span style="background:#2196F3; color:white; padding:2px 10px; border-radius:20px; font-size:0.65rem; font-weight:bold;">{r['fuente']}</span>
                         </div>
-                        <div class="card-desc">📝 {r['descripcion'][:100]}{'...' if len(r['descripcion']) > 100 else ''}</div>
-                        <div class="card-details">
-                            <span>💰 <strong>S/ {r['precio_vip']:.2f}</strong> (VIP)</span>
-                            <span>📦 <strong>S/ {r['precio_box']:.2f}</strong> (BOX)</span>
-                            <span>🏷️ <strong>S/ {r['precio_ir']:.2f}</strong> (IR)</span>
+                        <div style="font-size:0.8rem; color:#333; margin-bottom:0.5rem;">📝 {r['descripcion'][:100]}{'...' if len(r['descripcion']) > 100 else ''}</div>
+                        <div style="display:flex; flex-wrap:wrap; gap:1rem; font-size:0.75rem; color:#555; padding-top:0.5rem; border-top:1px solid #eee;">
+                            <span style="color:#555;">💰 <strong style="color:#1565c0;">S/ {r['precio_vip']:.2f}</strong> (VIP)</span>
+                            <span style="color:#555;">📦 <strong style="color:#1565c0;">S/ {r['precio_box']:.2f}</strong> (BOX)</span>
+                            <span style="color:#555;">🏷️ <strong style="color:#1565c0;">S/ {r['precio_ir']:.2f}</strong> (IR)</span>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
                 else:
-                    if r['cantidad'] > 0:
-                        badge_class = "badge-success"
-                        color = "#4CAF50"
-                    else:
-                        badge_class = "badge-danger"
-                        color = "#f44336"
+                    color_borde = "#4CAF50" if r['cantidad'] > 0 else "#f44336"
+                    badge_class = "badge-success" if r['cantidad'] > 0 else "badge-danger"
+                    badge_text = "✅ Con stock" if r['cantidad'] > 0 else "❌ Sin stock"
                     
                     st.markdown(f"""
-                    <div class="card-result" style="border-left-color: {color};">
-                        <div class="card-header">
-                            <span class="card-sku">📦 {r['sku']}</span>
-                            <span class="card-badge {badge_class}">{r['fuente']}</span>
+                    <div style="background:white; border-radius:12px; padding:0.75rem 1rem; margin-bottom:0.75rem; border-left:4px solid {color_borde}; box-shadow:0 2px 4px rgba(0,0,0,0.1); color:#1a1a2e;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                            <span style="font-family:monospace; font-weight:bold; background:#f0f0f0; padding:2px 8px; border-radius:6px; color:#1565c0;">📦 {r['sku']}</span>
+                            <span style="background:{color_borde}; color:white; padding:2px 10px; border-radius:20px; font-size:0.65rem; font-weight:bold;">{r['fuente']}</span>
                         </div>
-                        <div class="card-desc">📝 {r['descripcion'][:100]}{'...' if len(r['descripcion']) > 100 else ''}</div>
-                        <div class="card-details">
-                            <span>📊 Cantidad: <strong>{r['cantidad']}</strong> unidades</span>
+                        <div style="font-size:0.8rem; color:#333; margin-bottom:0.5rem;">📝 {r['descripcion'][:100]}{'...' if len(r['descripcion']) > 100 else ''}</div>
+                        <div style="display:flex; flex-wrap:wrap; gap:1rem; font-size:0.75rem; color:#555; padding-top:0.5rem; border-top:1px solid #eee;">
+                            <span style="color:#555;">📊 Cantidad: <strong style="color:#1565c0;">{r['cantidad']}</strong> unidades</span>
+                            <span style="color:#555; background:#f5f5f5; padding:2px 8px; border-radius:12px;">{badge_text}</span>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -223,7 +220,7 @@ def buscar_por_descripcion(catalogos, stocks):
         if resultados:
             st.success(f"✅ {len(resultados)} resultados")
             
-            # Mostrar en tabla compacta
+            # Mostrar en tabla
             df_resultados = pd.DataFrame(resultados)
             st.dataframe(df_resultados, use_container_width=True, height=400)
             
@@ -291,11 +288,11 @@ def analizar_duplicados(catalogos, stocks):
             
             # Estadísticas
             st.markdown(f"""
-            <div class="summary-card">
-                <h4>📊 Resumen del análisis</h4>
-                <div style="display:flex; justify-content:space-around; margin-top:0.5rem;">
-                    <div><span style="color:#1a1a2e;">📝 Total descripciones</span><br><span class="number">{len(descripciones)}</span></div>
-                    <div><span style="color:#1a1a2e;">🔄 Con múltiples SKUs</span><br><span class="number" style="color:#ff9800;">{len(duplicadas)}</span></div>
+            <div style="background:linear-gradient(135deg,#1a237e 0%,#283593 100%); border-radius:12px; padding:1rem; margin:1rem 0; text-align:center; box-shadow:0 4px 15px rgba(0,0,0,0.2);">
+                <h4 style="color:white; margin:0 0 0.5rem 0;">📊 Resumen del análisis</h4>
+                <div style="display:flex; justify-content:space-around;">
+                    <div><span style="color:white;">📝 Total descripciones</span><br><span style="font-size:2rem; font-weight:bold; color:#ff9800;">{len(descripciones)}</span></div>
+                    <div><span style="color:white;">🔄 Con múltiples SKUs</span><br><span style="font-size:2rem; font-weight:bold; color:#ff9800;">{len(duplicadas)}</span></div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -315,12 +312,12 @@ def analizar_duplicados(catalogos, stocks):
                         fuentes_str = ', '.join(fuentes[:2])
                         if len(fuentes) > 2:
                             fuentes_str += f" +{len(fuentes)-2}"
-                        skus_info.append(f"<code>{sku}</code> <span style='font-size:0.6rem;'>({fuentes_str})</span>")
+                        skus_info.append(f"<code style='background:#f0f0f0; padding:2px 6px; border-radius:4px; color:#d63384;'>{sku}</code> <span style='font-size:0.6rem; color:#666;'>({fuentes_str})</span>")
                     
                     st.markdown(f"""
-                    <div style="background:#FFF3E0; border-radius:10px; padding:0.75rem; margin-bottom:0.5rem; border-left:3px solid #FF9800;">
-                        <div style="font-size:0.8rem; margin-bottom:0.25rem;"><strong>📝 {desc[:100]}</strong></div>
-                        <div style="font-size:0.7rem;"><strong>🏷️ SKUs ({len(skus_vistos)}):</strong> {' '.join(skus_info[:5])}{'...' if len(skus_info) > 5 else ''}</div>
+                    <div style="background:#FFF3E0; border-radius:10px; padding:0.75rem; margin-bottom:0.5rem; border-left:3px solid #FF9800; color:#1a1a2e;">
+                        <div style="font-size:0.8rem; margin-bottom:0.25rem; color:#1a1a2e;"><strong style="color:#1a1a2e;">📝 {desc[:100]}</strong></div>
+                        <div style="font-size:0.7rem; color:#1a1a2e;"><strong style="color:#1a1a2e;">🏷️ SKUs ({len(skus_vistos)}):</strong> <span style="color:#1a1a2e;">{' '.join(skus_info[:5])}{'...' if len(skus_info) > 5 else ''}</span></div>
                     </div>
                     """, unsafe_allow_html=True)
                 
