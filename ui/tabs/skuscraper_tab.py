@@ -176,6 +176,87 @@ def buscar_alternativas(desc_buscar, umbral, catalogos, stocks):
     
     st.success(f"✅ {len(resultados_lista)} SKUs encontrados")
     
+    # ========== MOSTRAR RESULTADOS ==========
+    # Usar un contenedor para evitar duplicación de elementos
+    results_container = st.container()
+    
+    with results_container:
+        # Mostrar en grid de 2 columnas
+        for i in range(0, len(resultados_lista), 2):
+            cols = st.columns(2)
+            for j, col in enumerate(cols):
+                idx = i + j
+                if idx < len(resultados_lista):
+                    r = resultados_lista[idx]
+                    
+                    stock_inmediato = r['stock_yessica'] + r['stock_apri004']
+                    
+                    if stock_inmediato > 0:
+                        color = "#4CAF50"
+                        estado = "✅ STOCK INMEDIATO"
+                    elif r['stock_apri001'] > 0:
+                        color = "#FF9800"
+                        estado = "⚠️ STOCK REMOTO (APRI.001)"
+                    else:
+                        color = "#f44336"
+                        estado = "❌ SIN STOCK"
+                    
+                    with col:
+                        st.markdown(f"""
+                        <div style="background:#ffffff; border-radius:12px; padding:10px; margin-bottom:10px; border-left:4px solid {color};">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <b style="color:#1a1a2e;">📦 {r['sku']}</b>
+                                <span style="background:{color}; color:#ffffff; padding:2px 8px; border-radius:12px; font-size:11px;">{estado}</span>
+                            </div>
+                            <p style="color:#333333; font-size:12px; margin:8px 0 4px 0;">📝 {r['descripcion'][:80]}</p>
+                            <p style="color:#666666; font-size:10px; margin:0 0 8px 0;">🎯 {r['similitud']:.0f}% coincidencia</p>
+                            <div style="display:flex; flex-wrap:wrap; gap:6px; margin:8px 0;">
+                                <span style="background:#4CAF50; color:#ffffff; padding:2px 8px; border-radius:12px; font-size:10px;">🟢 YESSICA: {r['stock_yessica']}</span>
+                                <span style="background:#FF9800; color:#ffffff; padding:2px 8px; border-radius:12px; font-size:10px;">🟡 APRI.004: {r['stock_apri004']}</span>
+                                <span style="background:#f44336; color:#ffffff; padding:2px 8px; border-radius:12px; font-size:10px;">🔴 APRI.001: {r['stock_apri001']}</span>
+                            </div>
+                            <p style="color:#e67e22; font-size:14px; font-weight:bold; margin:8px 0 4px 0;">💰 S/ {r['precio']:.2f}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Selector de cantidad (cada uno con key única basada en SKU)
+                        max_cant = stock_inmediato if stock_inmediato > 0 else r['stock_apri001']
+                        if max_cant > 0:
+                            cantidad = st.number_input(
+                                "Cantidad", 
+                                min_value=0, 
+                                max_value=max_cant, 
+                                value=0, 
+                                step=1, 
+                                key=f"qty_selector_{r['sku']}",
+                                label_visibility="collapsed"
+                            )
+                            if cantidad > 0:
+                                if st.button(f"➕ Agregar {r['sku']}", key=f"add_btn_{r['sku']}"):
+                                    item = {
+                                        'sku': r['sku'],
+                                        'descripcion': r['descripcion'],
+                                        'cantidad': cantidad,
+                                        'precio': r['precio'],
+                                        'total': r['precio'] * cantidad,
+                                        'stock_yessica': r['stock_yessica'],
+                                        'stock_apri004': r['stock_apri004'],
+                                        'stock_apri001': r['stock_apri001']
+                                    }
+                                    if 'carrito' not in st.session_state:
+                                        st.session_state.carrito = []
+                                    st.session_state.carrito.append(item)
+                                    st.success(f"✅ {cantidad}x {r['sku']} agregado")
+                                    st.rerun()
+                        else:
+                            st.caption("❌ Sin stock disponible")
+    
+    # Botón para enviar al Bulk (FUERA del loop, UNA SOLA VEZ)
+    st.markdown("---")
+    if st.button(f"📋 Enviar {len(resultados_lista)} SKUs al MODO MASIVO", key="bulk_send_btn", use_container_width=True):
+        st.session_state.skus_para_procesar = [r['sku'] for r in resultados_lista]
+        st.success(f"✅ {len(resultados_lista)} SKUs enviados al MODO MASIVO")
+    
     # Mostrar resultados en grid de 2 columnas con ESTILOS INLINE SIMPLES
     for i in range(0, len(resultados_lista), 2):
         cols = st.columns(2)
