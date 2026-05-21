@@ -1,24 +1,33 @@
 # ui/tabs/skuscraper_tab.py
 import streamlit as st
 import pandas as pd
-from collections import Counter
 from difflib import SequenceMatcher
 
 
 def render_skuscraper_tab():
-    st.markdown("### 🔧 SKU SCRAPER - Analizador de Catálogo")
+    st.markdown("### 🔧 SKU SCRAPER - Analizador de Catálogo y Stock")
     st.caption("Detecta SKUs duplicados, variantes y productos con misma descripción")
+    st.caption("📌 Busca en: Catálogos de precios + Hojas de stock (YESSICA, APRI.004, APRI.001)")
     
     # Verificar si hay datos cargados
-    if not st.session_state.get('catalogos', []):
-        st.warning("⚠️ Primero carga catálogos de precios en el sidebar")
-        st.info("📂 Ve al sidebar → Catálogos de precios → Sube tus archivos Excel")
+    tiene_catalogos = st.session_state.get('catalogos', [])
+    tiene_stocks = st.session_state.get('stocks', [])
+    
+    if not tiene_catalogos and not tiene_stocks:
+        st.warning("⚠️ Primero carga catálogos de precios o reportes de stock en el sidebar")
+        st.info("📂 Ve al sidebar → Archivos → Carga tus archivos Excel")
         return
     
-    # Mostrar resumen de catálogos cargados
-    with st.expander("📊 Catálogos cargados", expanded=False):
-        for cat in st.session_state.catalogos:
-            st.markdown(f"- **{cat['nombre']}** | SKUs: {len(cat['df'])} | Col SKU: {cat['col_sku']}")
+    # Mostrar resumen de datos cargados
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"**📚 Catálogos:** {len(tiene_catalogos)} archivos")
+        for cat in tiene_catalogos[:3]:
+            st.caption(f"  - {cat['nombre'][:40]}")
+    with col2:
+        st.markdown(f"**📦 Stock:** {len(tiene_stocks)} hojas")
+        for stock in tiene_stocks[:3]:
+            st.caption(f"  - {stock['nombre'][:40]}")
     
     st.markdown("---")
     
@@ -32,124 +41,167 @@ def render_skuscraper_tab():
     st.markdown("---")
     
     if modo_busqueda == "🔍 Buscar por SKU":
-        buscar_por_sku()
+        buscar_por_sku(tiene_catalogos, tiene_stocks)
     
     elif modo_busqueda == "📝 Buscar por descripción":
-        buscar_por_descripcion()
+        buscar_por_descripcion(tiene_catalogos, tiene_stocks)
     
     else:
-        analizar_todos_duplicados()
+        analizar_todos_duplicados(tiene_catalogos, tiene_stocks)
 
 
-def buscar_por_sku():
-    """Busca un SKU específico y muestra todas sus variantes"""
+def buscar_por_sku(catalogos, stocks):
+    """Busca un SKU específico en catálogos y stock"""
     st.markdown("### 🔍 Búsqueda por SKU")
-    st.caption("Encuentra un SKU y todas sus variantes en los catálogos")
+    st.caption("Encuentra un SKU en catálogos y verifica su stock")
     
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        sku_buscar = st.text_input("Ingresa el SKU a buscar", placeholder="Ej: RN9401276NA8")
-    
-    with col2:
-        busqueda_exacta = st.checkbox("Búsqueda exacta", value=True, help="Si está activado, busca coincidencia exacta. Si no, busca parcial")
+    sku_buscar = st.text_input("Ingresa el SKU a buscar", placeholder="Ej: RN9401276NA8")
     
     if sku_buscar and st.button("🔍 Buscar", type="primary", use_container_width=True):
         sku_limpio = sku_buscar.strip().upper()
         resultados = []
         
-        with st.spinner("Buscando en catálogos..."):
-            for cat in st.session_state.catalogos:
+        with st.spinner("Buscando en catálogos y stock..."):
+            # 1. BÚSQUEDA EN CATÁLOGOS
+            for cat in catalogos:
                 df = cat['df']
                 col_sku = cat['col_sku']
                 col_desc = cat.get('col_desc')
                 
-                if busqueda_exacta:
-                    mask = df[col_sku].astype(str).str.strip().str.upper() == sku_limpio
-                else:
-                    mask = df[col_sku].astype(str).str.contains(sku_limpio, case=False, na=False)
-                
+                mask = df[col_sku].astype(str).str.strip().str.upper() == sku_limpio
                 coincidencias = df[mask]
                 
                 for _, row in coincidencias.iterrows():
                     sku = str(row[col_sku]).strip()
                     desc = str(row[col_desc])[:200] if col_desc else "Sin descripción"
                     
-                    # Intentar obtener precio
-                    precio = 0
-                    if st.session_state.get('precio_key') in cat.get('precios', {}):
-                        col_precio = cat['precios'][st.session_state.precio_key]
+                    # Obtener precios
+                    precios = {}
+                    for nivel, col_precio in cat.get('precios', {}).items():
                         try:
-                            precio = float(row[col_precio]) if pd.notna(row[col_precio]) else 0
+                            precios[nivel] = float(row[col_precio]) if pd.notna(row[col_precio]) else 0
                         except:
-                            precio = 0
+                            precios[nivel] = 0
                     
                     resultados.append({
-                        'catalogo': cat['nombre'][:30],
+                        'origen': f"📚 Catálogo: {cat['nombre'][:30]}",
                         'sku': sku,
                         'descripcion': desc,
-                        'precio': precio
+                        'precio_vip': precios.get('P. VIP', 0),
+                        'precio_box': precios.get('P. BOX', 0),
+                        'precio_ir': precios.get('P. IR', 0),
+                        'tipo': 'catalogo'
+                    })
+            
+            # 2. BÚSQUEDA EN STOCK
+            for stock in stocks:
+                df = stock['df']
+                col_sku = stock['col_sku']
+                hoja = stock.get('hoja', 'Desconocida')
+                
+                mask = df[col_sku].astype(str).str.strip().str.upper() == sku_limpio
+                coincidencias = df[mask]
+                
+                for _, row in coincidencias.iterrows():
+                    sku = str(row[col_sku]).strip()
+                    
+                    # Buscar columna de cantidad
+                    col_cant = None
+                    for col in df.columns:
+                        col_upper = str(col).upper()
+                        if any(p in col_upper for p in ['CANT', 'STOCK', 'DISPONIBLE', 'UNIDADES']):
+                            col_cant = col
+                            break
+                    
+                    cantidad = 0
+                    if col_cant:
+                        try:
+                            cantidad = int(float(row[col_cant])) if pd.notna(row[col_cant]) else 0
+                        except:
+                            cantidad = 0
+                    
+                    # Buscar descripción en stock si existe
+                    desc_stock = ""
+                    for col in df.columns:
+                        col_upper = str(col).upper()
+                        if any(p in col_upper for p in ['DESC', 'DESCRIPCION', 'PRODUCTO']):
+                            desc_stock = str(row[col])[:200] if pd.notna(row[col]) else ""
+                            break
+                    
+                    resultados.append({
+                        'origen': f"📦 Stock: {hoja}",
+                        'sku': sku,
+                        'descripcion': desc_stock if desc_stock else f"Stock en {hoja}",
+                        'cantidad': cantidad,
+                        'tipo': 'stock'
                     })
         
         if resultados:
-            st.success(f"✅ Se encontraron {len(resultados)} coincidencias")
+            st.success(f"✅ Se encontraron {len(resultados)} resultados")
             
-            # Mostrar resultados en tabla
-            df_resultados = pd.DataFrame(resultados)
-            st.dataframe(df_resultados, use_container_width=True, height=300)
+            # Separar resultados por tipo
+            resultados_catalogo = [r for r in resultados if r['tipo'] == 'catalogo']
+            resultados_stock = [r for r in resultados if r['tipo'] == 'stock']
             
-            # Estadísticas
+            # Mostrar resultados de catálogo
+            if resultados_catalogo:
+                st.markdown("#### 📚 En catálogos:")
+                for r in resultados_catalogo:
+                    st.markdown(f"""
+                    <div style="background:white;border-radius:16px;padding:1rem;margin-bottom:1rem;border-left:5px solid #2196F3;">
+                        <div style="display:flex;justify-content:space-between;">
+                            <strong>📦 {r['sku']}</strong>
+                            <span style="background:#2196F3;color:white;padding:4px 12px;border-radius:20px;">{r['origen']}</span>
+                        </div>
+                        <div style="margin-top:8px;">📝 {r['descripcion']}</div>
+                        <div style="margin-top:8px;display:flex;gap:1rem;">
+                            <span>💰 VIP: S/ {r['precio_vip']:.2f}</span>
+                            <span>📦 BOX: S/ {r['precio_box']:.2f}</span>
+                            <span>🏷️ IR: S/ {r['precio_ir']:.2f}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            # Mostrar resultados de stock
+            if resultados_stock:
+                st.markdown("#### 📦 En stock:")
+                for r in resultados_stock:
+                    color = "#4CAF50" if r.get('cantidad', 0) > 0 else "#f44336"
+                    st.markdown(f"""
+                    <div style="background:white;border-radius:16px;padding:1rem;margin-bottom:1rem;border-left:5px solid {color};">
+                        <div style="display:flex;justify-content:space-between;">
+                            <strong>📦 {r['sku']}</strong>
+                            <span style="background:{color};color:white;padding:4px 12px;border-radius:20px;">{r['origen']}</span>
+                        </div>
+                        <div style="margin-top:8px;">📝 {r['descripcion']}</div>
+                        <div style="margin-top:8px;">📊 Cantidad disponible: <strong>{r.get('cantidad', 0)}</strong></div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            # SKUs para enviar al Bulk
             skus_unicos = list(set([r['sku'] for r in resultados]))
-            desc_unicas = list(set([r['descripcion'] for r in resultados]))
-            
-            st.markdown(f"""
-            <div style="background:rgba(0,0,0,0.3);border-radius:12px;padding:1rem;margin-top:1rem;">
-                <div style="display:flex;justify-content:space-around;flex-wrap:wrap;">
-                    <div>📦 Total SKUs encontrados: <strong>{len(resultados)}</strong></div>
-                    <div>🏷️ SKUs únicos: <strong>{len(skus_unicos)}</strong></div>
-                    <div>📝 Descripciones únicas: <strong>{len(desc_unicas)}</strong></div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Mostrar descripciones diferentes para el mismo SKU
-            if len(skus_unicos) == 1 and len(desc_unicas) > 1:
-                st.warning(f"⚠️ El SKU **{skus_unicos[0]}** tiene {len(desc_unicas)} descripciones diferentes:")
-                for desc in desc_unicas:
-                    st.markdown(f"- {desc}")
-            
-            # Botón para enviar al Bulk
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button(f"📋 Enviar SKUs únicos ({len(skus_unicos)}) al MODO MASIVO", use_container_width=True):
-                    st.session_state.skus_para_procesar = skus_unicos
-                    st.success(f"✅ {len(skus_unicos)} SKUs enviados al MODO MASIVO")
-            
-            with col2:
-                if st.button(f"📋 Enviar TODOS los SKUs ({len(resultados)}) al MODO MASIVO", use_container_width=True):
-                    st.session_state.skus_para_procesar = [r['sku'] for r in resultados]
-                    st.success(f"✅ {len(resultados)} SKUs enviados al MODO MASIVO")
+            if st.button(f"📋 Enviar {len(skus_unicos)} SKU(s) al MODO MASIVO", use_container_width=True):
+                st.session_state.skus_para_procesar = skus_unicos
+                st.success(f"✅ {len(skus_unicos)} SKUs enviados al MODO MASIVO")
         else:
             st.error(f"❌ No se encontró el SKU: {sku_buscar}")
 
 
-def buscar_por_descripcion():
-    """Busca productos por descripción y muestra variantes"""
+def buscar_por_descripcion(catalogos, stocks):
+    """Busca productos por descripción en catálogos y stock"""
     st.markdown("### 📝 Búsqueda por descripción")
     st.caption("Encuentra todos los SKUs que coinciden con una descripción")
     
     desc_buscar = st.text_input("Ingresa la descripción a buscar", 
-                                  placeholder="Ej: Cargador USB Type-C 33W")
-    
-    umbral = st.slider("🎯 Porcentaje de similitud", 50, 100, 70, 5, 
-                       help="Porcentaje mínimo de coincidencia para considerar el resultado")
+                                  placeholder="Ej: Cargador USB Type-C")
     
     if desc_buscar and st.button("🔍 Buscar", type="primary", use_container_width=True):
         desc_limpia = desc_buscar.strip().lower()
         resultados = []
         
-        with st.spinner("Buscando en catálogos..."):
-            for cat in st.session_state.catalogos:
+        with st.spinner("Buscando en catálogos y stock..."):
+            # Búsqueda en catálogos
+            for cat in catalogos:
                 df = cat['df']
                 col_sku = cat['col_sku']
                 col_desc = cat.get('col_desc')
@@ -159,226 +211,140 @@ def buscar_por_descripcion():
                 
                 for _, row in df.iterrows():
                     desc_catalogo = str(row[col_desc]).lower()
-                    
-                    # Calcular similitud
-                    similitud = calcular_similitud(desc_limpia, desc_catalogo)
-                    
-                    if similitud >= umbral:
+                    if desc_limpia in desc_catalogo:
                         sku = str(row[col_sku]).strip()
                         desc = str(row[col_desc])[:200]
                         
-                        # Obtener precio
-                        precio = 0
-                        if st.session_state.get('precio_key') in cat.get('precios', {}):
-                            col_precio = cat['precios'][st.session_state.precio_key]
-                            try:
-                                precio = float(row[col_precio]) if pd.notna(row[col_precio]) else 0
-                            except:
-                                precio = 0
-                        
                         resultados.append({
-                            'catalogo': cat['nombre'][:30],
+                            'origen': f"📚 Catálogo: {cat['nombre'][:30]}",
                             'sku': sku,
                             'descripcion': desc,
-                            'similitud': f"{similitud:.0f}%",
-                            'precio': precio
+                            'tipo': 'catalogo'
                         })
+            
+            # Búsqueda en stock
+            for stock in stocks:
+                df = stock['df']
+                col_sku = stock['col_sku']
+                hoja = stock.get('hoja', 'Desconocida')
+                
+                # Buscar columna de descripción en stock
+                col_desc_stock = None
+                for col in df.columns:
+                    col_upper = str(col).upper()
+                    if any(p in col_upper for p in ['DESC', 'DESCRIPCION', 'PRODUCTO']):
+                        col_desc_stock = col
+                        break
+                
+                if col_desc_stock:
+                    for _, row in df.iterrows():
+                        desc_stock = str(row[col_desc_stock]).lower()
+                        if desc_limpia in desc_stock:
+                            sku = str(row[col_sku]).strip()
+                            desc = str(row[col_desc_stock])[:200]
+                            
+                            resultados.append({
+                                'origen': f"📦 Stock: {hoja}",
+                                'sku': sku,
+                                'descripcion': desc,
+                                'tipo': 'stock'
+                            })
         
         if resultados:
-            st.success(f"✅ Se encontraron {len(resultados)} productos con descripción similar")
+            st.success(f"✅ Se encontraron {len(resultados)} productos")
             
-            # Mostrar resultados
             df_resultados = pd.DataFrame(resultados)
             st.dataframe(df_resultados, use_container_width=True, height=400)
             
-            # Análisis de agrupación
-            st.markdown("---")
-            st.markdown("### 📊 Análisis de agrupación por descripción")
-            
-            # Agrupar por descripción
-            desc_group = {}
-            for r in resultados:
-                desc_key = r['descripcion'][:100]
-                if desc_key not in desc_group:
-                    desc_group[desc_key] = []
-                desc_group[desc_key].append(r['sku'])
-            
-            # Mostrar grupos con múltiples SKUs
-            grupos_mostrados = 0
-            for desc, skus in desc_group.items():
-                if len(skus) > 1:
-                    st.markdown(f"""
-                    <div style="background:#FFF3E0;border-radius:12px;padding:1rem;margin-bottom:1rem;">
-                        <strong>📝 Descripción:</strong> {desc}<br>
-                        <strong>🔢 Cantidad de SKUs diferentes:</strong> {len(skus)}<br>
-                        <strong>🏷️ SKUs:</strong><br>
-                        {chr(10).join([f'&nbsp;&nbsp;• `{s}`' for s in skus[:5]])}
-                        {f'<br>&nbsp;&nbsp;... y {len(skus)-5} más' if len(skus) > 5 else ''}
-                    </div>
-                    """, unsafe_allow_html=True)
-                    grupos_mostrados += 1
-            
-            if grupos_mostrados == 0:
-                st.info("No se encontraron descripciones con múltiples SKUs")
-            
-            # Botón para enviar al Bulk
-            skus_encontrados = list(set([r['sku'] for r in resultados]))
-            if st.button(f"📋 Enviar {len(skus_encontrados)} SKUs únicos al MODO MASIVO", use_container_width=True):
-                st.session_state.skus_para_procesar = skus_encontrados
-                st.success(f"✅ {len(skus_encontrados)} SKUs enviados al MODO MASIVO")
+            skus_unicos = list(set([r['sku'] for r in resultados]))
+            if st.button(f"📋 Enviar {len(skus_unicos)} SKU(s) al MODO MASIVO", use_container_width=True):
+                st.session_state.skus_para_procesar = skus_unicos
+                st.success(f"✅ {len(skus_unicos)} SKUs enviados al MODO MASIVO")
         else:
             st.warning("No se encontraron productos con esa descripción")
 
 
-def analizar_todos_duplicados():
-    """Analiza todos los catálogos en busca de duplicados e inconsistencias"""
+def analizar_todos_duplicados(catalogos, stocks):
+    """Analiza todos los catálogos y stock en busca de duplicados"""
     st.markdown("### 📊 Análisis global de duplicados")
-    st.caption("Escanea todo el catálogo y reporta SKUs con múltiples descripciones y descripciones con múltiples SKUs")
     
     if st.button("🔍 Iniciar análisis completo", type="primary", use_container_width=True):
-        with st.spinner("Analizando catálogos... Este proceso puede tomar unos segundos..."):
-            resultados_por_sku = {}
-            resultados_por_desc = {}
-            total_skus = 0
-            total_registros = 0
+        with st.spinner("Analizando catálogos y stock..."):
+            skus_por_descripcion = {}
+            stock_por_sku = {}
             
-            for cat in st.session_state.catalogos:
+            # Analizar catálogos
+            for cat in catalogos:
                 df = cat['df']
                 col_sku = cat['col_sku']
                 col_desc = cat.get('col_desc')
                 
-                total_registros += len(df)
-                
-                # Análisis por SKU
-                for _, row in df.iterrows():
-                    sku = str(row[col_sku]).strip()
-                    if sku:
-                        total_skus += 1
-                        if sku not in resultados_por_sku:
-                            resultados_por_sku[sku] = []
-                        if col_desc:
-                            desc = str(row[col_desc])[:200]
-                            resultados_por_sku[sku].append(desc)
-                
-                # Análisis por descripción
                 if col_desc:
                     for _, row in df.iterrows():
-                        desc = str(row[col_desc])[:200]
                         sku = str(row[col_sku]).strip()
-                        if desc and desc != 'nan':
-                            if desc not in resultados_por_desc:
-                                resultados_por_desc[desc] = []
-                            resultados_por_desc[desc].append(sku)
+                        desc = str(row[col_desc])[:150]
+                        if desc not in skus_por_descripcion:
+                            skus_por_descripcion[desc] = []
+                        if sku not in skus_por_descripcion[desc]:
+                            skus_por_descripcion[desc].append(sku)
             
-            # Detectar problemas
-            skus_con_multiples_desc = {
-                sku: list(set(descs)) for sku, descs in resultados_por_sku.items() 
-                if len(set(descs)) > 1
-            }
+            # Analizar stock
+            for stock in stocks:
+                df = stock['df']
+                col_sku = stock['col_sku']
+                hoja = stock.get('hoja', 'Desconocida')
+                
+                # Buscar columna de cantidad
+                col_cant = None
+                for col in df.columns:
+                    col_upper = str(col).upper()
+                    if any(p in col_upper for p in ['CANT', 'STOCK', 'DISPONIBLE']):
+                        col_cant = col
+                        break
+                
+                for _, row in df.iterrows():
+                    sku = str(row[col_sku]).strip()
+                    cantidad = 0
+                    if col_cant and pd.notna(row[col_cant]):
+                        try:
+                            cantidad = int(float(row[col_cant]))
+                        except:
+                            cantidad = 0
+                    
+                    if sku not in stock_por_sku:
+                        stock_por_sku[sku] = {'total': 0, 'ubicaciones': []}
+                    stock_por_sku[sku]['total'] += cantidad
+                    stock_por_sku[sku]['ubicaciones'].append({'hoja': hoja, 'cantidad': cantidad})
             
-            desc_con_multiples_skus = {
-                desc: list(set(skus)) for desc, skus in resultados_por_desc.items() 
-                if len(set(skus)) > 1
-            }
+            # Mostrar descripciones con múltiples SKUs
+            desc_con_multiples = {desc: skus for desc, skus in skus_por_descripcion.items() if len(skus) > 1}
             
-            # Resumen general
             st.markdown(f"""
             <div style="background:rgba(0,0,0,0.3);border-radius:12px;padding:1rem;margin-bottom:1rem;">
-                <div style="display:flex;justify-content:space-around;flex-wrap:wrap;">
-                    <div>📊 Total registros: <strong>{total_registros}</strong></div>
-                    <div>📦 SKUs únicos: <strong>{len(resultados_por_sku)}</strong></div>
-                    <div>⚠️ SKUs con múltiples descripciones: <strong style="color:#f44336;">{len(skus_con_multiples_desc)}</strong></div>
-                    <div>🔄 Descripciones con múltiples SKUs: <strong style="color:#FF9800;">{len(desc_con_multiples_skus)}</strong></div>
+                <div style="display:flex;justify-content:space-around;">
+                    <div>📚 Descripciones analizadas: <strong>{len(skus_por_descripcion)}</strong></div>
+                    <div>🔄 Con múltiples SKUs: <strong style="color:#FF9800;">{len(desc_con_multiples)}</strong></div>
+                    <div>📦 SKUs con stock: <strong>{len(stock_por_sku)}</strong></div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
             
-            # SKUs con múltiples descripciones
-            if skus_con_multiples_desc:
-                st.markdown("### ⚠️ SKUs que aparecen con diferentes descripciones")
-                st.caption(f"Se encontraron {len(skus_con_multiples_desc)} SKUs con este problema")
-                
-                for sku, descs in list(skus_con_multiples_desc.items())[:15]:
-                    with st.expander(f"🔴 SKU: {sku} - {len(descs)} descripciones diferentes"):
-                        for i, desc in enumerate(descs, 1):
-                            st.markdown(f"{i}. {desc}")
-                
-                if len(skus_con_multiples_desc) > 15:
-                    st.info(f"... y {len(skus_con_multiples_desc) - 15} SKUs más")
-            else:
-                st.success("✅ No se encontraron SKUs con descripciones inconsistentes")
+            # Mostrar ejemplos
+            if desc_con_multiples:
+                st.markdown("### 🔄 Descripciones con múltiples SKUs")
+                for desc, skus in list(desc_con_multiples.items())[:10]:
+                    st.markdown(f"""
+                    <div style="background:#FFF3E0;border-radius:12px;padding:1rem;margin-bottom:0.5rem;">
+                        <strong>📝 {desc[:80]}</strong><br>
+                        <strong>🏷️ SKUs ({len(skus)}):</strong> {', '.join(skus[:5])}{'...' if len(skus) > 5 else ''}
+                    </div>
+                    """, unsafe_allow_html=True)
             
-            st.markdown("---")
-            
-            # Descripciones con múltiples SKUs
-            if desc_con_multiples_skus:
-                st.markdown("### 🔄 Descripciones que tienen múltiples SKUs")
-                st.caption(f"Se encontraron {len(desc_con_multiples_skus)} descripciones con este patrón")
-                
-                # Ordenar por cantidad de SKUs (mayor primero)
-                desc_ordenadas = sorted(desc_con_multiples_skus.items(), key=lambda x: len(x[1]), reverse=True)
-                
-                for desc, skus in desc_ordenadas[:15]:
-                    with st.expander(f"📝 {desc[:80]}... - {len(skus)} SKUs asociados"):
-                        st.markdown("**SKUs relacionados:**")
-                        # Mostrar SKUs en columnas
-                        cols = st.columns(4)
-                        for i, sku in enumerate(skus[:20]):
-                            cols[i % 4].markdown(f"`{sku}`")
-                        if len(skus) > 20:
-                            st.markdown(f"... y {len(skus) - 20} SKUs más")
-                
-                if len(desc_con_multiples_skus) > 15:
-                    st.info(f"... y {len(desc_con_multiples_skus) - 15} descripciones más")
-                
-                # Sugerencia
-                st.info("💡 **Sugerencia:** Las descripciones con múltiples SKUs podrían ser productos similares o variantes del mismo producto. Revisa si deberían unificarse.")
-            else:
-                st.success("✅ No se encontraron descripciones con múltiples SKUs")
-            
-            # Botón para exportar reporte
-            if skus_con_multiples_desc or desc_con_multiples_skus:
-                st.markdown("---")
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("📋 Enviar SKUs problemáticos al MODO MASIVO", use_container_width=True):
-                        skus_problematicos = list(skus_con_multiples_desc.keys())
-                        st.session_state.skus_para_procesar = skus_problematicos
-                        st.success(f"✅ {len(skus_problematicos)} SKUs enviados al MODO MASIVO")
-                
-                with col2:
-                    # Crear reporte descargable
-                    reporte_data = []
-                    for sku, descs in skus_con_multiples_desc.items():
-                        for desc in descs:
-                            reporte_data.append({'SKU': sku, 'descripcion': desc, 'tipo': 'SKU con múltiples descripciones'})
-                    
-                    for desc, skus in desc_con_multiples_skus.items():
-                        for sku in skus:
-                            reporte_data.append({'SKU': sku, 'descripcion': desc, 'tipo': 'Descripción con múltiples SKUs'})
-                    
-                    if reporte_data:
-                        df_reporte = pd.DataFrame(reporte_data)
-                        csv = df_reporte.to_csv(index=False).encode('utf-8')
-                        st.download_button(
-                            label="📥 Descargar reporte CSV",
-                            data=csv,
-                            file_name="reporte_duplicados.csv",
-                            mime="text/csv",
-                            use_container_width=True
-                        )
-
-
-def calcular_similitud(texto1: str, texto2: str) -> float:
-    """Calcula similitud entre dos textos usando SequenceMatcher"""
-    if not texto1 or not texto2:
-        return 0.0
-    
-    texto1 = texto1.lower().strip()
-    texto2 = texto2.lower().strip()
-    
-    if texto1 == texto2:
-        return 100.0
-    
-    # Usar SequenceMatcher para similitud de secuencias
-    return SequenceMatcher(None, texto1, texto2).ratio() * 100
+            # Mostrar resumen de stock
+            if stock_por_sku:
+                st.markdown("### 📦 Resumen de stock por SKU")
+                stock_df = pd.DataFrame([
+                    {'SKU': sku, 'Stock Total': info['total'], 'Ubicaciones': len(info['ubicaciones'])}
+                    for sku, info in stock_por_sku.items()
+                ]).sort_values('Stock Total', ascending=False).head(20)
+                st.dataframe(stock_df, use_container_width=True)
