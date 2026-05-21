@@ -1,73 +1,54 @@
-# app.py - QTC Smart Sales Pro v5.0 (Base funcionando con 4 tabs)
+# utils/file_handlers.py
 import streamlit as st
-from datetime import datetime
-
-# Configuración de página
-st.set_page_config(
-    page_title="QTC Smart Sales Pro",
-    page_icon="💼",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Importaciones modulares
-from modules.auth import inicializar_sesion, mostrar_pantalla_login, cerrar_sesion
-from ui.styles import apply_custom_styles
-from ui.components import mostrar_header
-from ui.tabs.bulk_tab import render_bulk_tab
-from ui.tabs.search_tab import render_search_tab
-from ui.tabs.cart_tab import render_cart_tab
-from ui.tabs.skuscraper_tab import render_skuscraper_tab
+import pandas as pd
+from utils.excel_utils import cargar_archivo, detectar_columna_sku, detectar_columna_descripcion, detectar_columnas_precio
 
 
-def main():
-    # Aplicar estilos CSS
-    apply_custom_styles()
+def cargar_ugreen_catalogo(archivo):
+    """Carga específica para archivo UGREEN"""
+    df = cargar_archivo(archivo)
+    if df is None:
+        return None
     
-    # Inicializar sesión
-    inicializar_sesion()
+    col_sku = None
+    col_desc = None
+    col_mayor = None
+    col_caja = None
+    col_vip = None
+    col_stock = None
     
-    # Verificar autenticación
-    if not st.session_state.auth:
-        mostrar_pantalla_login()
-        return
+    for col in df.columns:
+        col_upper = str(col).upper()
+        if 'SKU' in col_upper:
+            col_sku = col
+        elif 'DESCRITPION' in col_upper or 'DESCRIPCION' in col_upper or 'GOODS' in col_upper:
+            col_desc = col
+        elif col_upper == 'MAYOR':
+            col_mayor = col
+        elif col_upper == 'CAJA':
+            col_caja = col
+        elif col_upper == 'VIP':
+            col_vip = col
+        elif 'STOCK' in col_upper:
+            col_stock = col
     
-    # Mostrar header
-    if not mostrar_header(st.session_state.user_name, st.session_state.user_role):
-        cerrar_sesion()
-        st.rerun()
-        return
+    if not col_sku:
+        col_sku = df.columns[0]
     
-    st.markdown("---")
+    precios = {}
+    if col_mayor:
+        precios['P. IR'] = col_mayor
+    if col_caja:
+        precios['P. BOX'] = col_caja
+    if col_vip:
+        precios['P. VIP'] = col_vip
     
-    # 4 Tabs principales
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📦 MODO MASIVO (Bulk)", 
-        "🔍 BÚSQUEDA INTELIGENTE", 
-        "🛒 CARRITO DE COTIZACIÓN",
-        "🔧 SKU SCRAPER"
-    ])
-    
-    with tab1:
-        render_bulk_tab()
-    
-    with tab2:
-        render_search_tab()
-    
-    with tab3:
-        render_cart_tab()
-    
-    with tab4:
-        render_skuscraper_tab()
-    
-    # Footer
-    st.markdown("---")
-    st.markdown(
-        f'<div class="footer">⚡ QTC Smart Sales Pro v5.0 | Modo: {st.session_state.get("modo", "XIAOMI")} | '
-        f'{datetime.now().strftime("%Y-%m-%d %H:%M")}</div>',
-        unsafe_allow_html=True
-    )
-
-
-if __name__ == "__main__":
-    main()
+    return {
+        'nombre': archivo.name,
+        'df': df,
+        'col_sku': col_sku,
+        'col_desc': col_desc,
+        'col_stock': col_stock,
+        'precios': precios,
+        'tipo': 'UGREEN'
+    }
