@@ -1,6 +1,4 @@
 # utils/excel_utils.py
-"""Utilidades para procesamiento de archivos Excel"""
-
 import re
 import pandas as pd
 import streamlit as st
@@ -8,13 +6,12 @@ from typing import Optional, Dict, List
 
 
 def corregir_numero(valor) -> float:
-    """Convierte un valor a número, manejando formatos peruanos (S/, $, etc.)"""
+    """Convierte un valor a número, manejando formatos peruanos"""
     if pd.isna(valor) or str(valor).strip() in ["", "0", "0.0", "-"]:
         return 0.0
     
     s = str(valor).upper().replace('S/', '').replace('$', '').replace(' ', '').strip()
     
-    # Manejar formato peruano (ej: 1,234.56 o 1.234,56)
     if ',' in s and '.' in s:
         s = s.replace(',', '')
     elif ',' in s:
@@ -36,7 +33,7 @@ def limpiar_cabeceras(df: pd.DataFrame) -> pd.DataFrame:
     """Detecta y limpia cabeceras en archivos Excel"""
     for i in range(min(20, len(df))):
         fila = [str(x).upper() for x in df.iloc[i].values]
-        if any(h in item for h in ['SKU', 'COD', 'SAP', 'NUMERO', 'ARTICULO', 'CODIGO'] for item in fila):
+        if any(h in item for h in ['SKU', 'COD', 'SAP', 'NUMERO', 'ARTICULO'] for item in fila):
             df.columns = [str(c).strip() for c in df.iloc[i]]
             return df.iloc[i+1:].reset_index(drop=True)
     return df
@@ -60,7 +57,7 @@ def cargar_archivo(uploaded_file) -> Optional[pd.DataFrame]:
 
 
 def detectar_columna_sku(df: pd.DataFrame) -> str:
-    """Detecta automáticamente la columna SKU en un DataFrame"""
+    """Detecta la columna SKU"""
     posibles = ['SKU', 'COD', 'SAP', 'NUMERO', 'ARTICULO', 'CODIGO']
     for col in df.columns:
         col_upper = str(col).upper()
@@ -71,7 +68,7 @@ def detectar_columna_sku(df: pd.DataFrame) -> str:
 
 
 def detectar_columna_descripcion(df: pd.DataFrame) -> str:
-    """Detecta automáticamente la columna de descripción"""
+    """Detecta la columna de descripción"""
     posibles = ['DESC', 'DESCRIPCION', 'NOMBRE', 'PRODUCTO', 'GOODS', 'ARTICULO']
     for col in df.columns:
         col_upper = str(col).upper()
@@ -82,9 +79,8 @@ def detectar_columna_descripcion(df: pd.DataFrame) -> str:
 
 
 def detectar_columnas_precio(df: pd.DataFrame) -> Dict:
-    """Detecta columnas de precios (P. IR, P. BOX, P. VIP)"""
+    """Detecta columnas de precios"""
     precios = {}
-    
     mapeo = {'P. IR': ['IR', 'MAYORISTA', 'MAYOR'], 
              'P. BOX': ['BOX', 'CAJA'], 
              'P. VIP': ['VIP']}
@@ -99,7 +95,6 @@ def detectar_columnas_precio(df: pd.DataFrame) -> Dict:
             if key in precios:
                 break
     
-    # Fallback: si no encuentra y hay columna 'PRECIO'
     if not precios and 'PRECIO' in [str(c).upper() for c in df.columns]:
         precios['P. VIP'] = 'PRECIO'
     
@@ -107,7 +102,7 @@ def detectar_columnas_precio(df: pd.DataFrame) -> Dict:
 
 
 def cargar_catalogo(archivo) -> Optional[Dict]:
-    """Carga un catálogo completo (archivo + columnas detectadas)"""
+    """Carga un catálogo completo"""
     df = cargar_archivo(archivo)
     if df is None:
         return None
@@ -122,7 +117,7 @@ def cargar_catalogo(archivo) -> Optional[Dict]:
 
 
 def cargar_stock(archivos, modo: str) -> List[Dict]:
-    """Carga archivos de stock filtrando por modo (XIAOMI o UGREEN)"""
+    """Carga archivos de stock"""
     stocks = []
     
     for archivo in archivos:
@@ -131,7 +126,6 @@ def cargar_stock(archivos, modo: str) -> List[Dict]:
             for hoja in xls.sheet_names:
                 hoja_upper = hoja.upper()
                 
-                # Filtrar según modo
                 if modo == "XIAOMI":
                     if not any(h in hoja_upper for h in ['APRI', 'YESSICA']):
                         continue
