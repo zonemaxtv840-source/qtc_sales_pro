@@ -1,349 +1,298 @@
 # ui/tabs/skuscraper_tab.py
 import streamlit as st
 import pandas as pd
-from difflib import SequenceMatcher
 from collections import defaultdict
 
 
 def render_skuscraper_tab():
-    st.markdown("### 🔧 SKU SCRAPER - Analizador de Catálogo y Stock")
-    st.caption("Detecta SKUs duplicados y productos con misma descripción")
-    st.caption("📌 Busca en: Catálogos + Stock (YESSICA, APRI.004, APRI.001)")
+    st.markdown("### 🔧 SKU SCRAPER - Buscador de Alternativas")
+    st.caption("🔍 Encuentra SKUs alternativos con la MISMA DESCRIPCIÓN pero diferente código")
+    st.caption("📌 **YESSICA / APRI.004** = Stock inmediato | **APRI.001** = Última opción (solicitar al almacén)")
     
-    # Verificar si hay datos cargados
     tiene_catalogos = st.session_state.get('catalogos', [])
     tiene_stocks = st.session_state.get('stocks', [])
     
-    if not tiene_catalogos and not tiene_stocks:
-        st.warning("⚠️ Primero carga catálogos de precios o reportes de stock en el sidebar")
+    if not tiene_catalogos:
+        st.warning("⚠️ Primero carga catálogos de precios en el sidebar")
         return
     
-    # Mostrar resumen
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown(f"**📚 Catálogos:** {len(tiene_catalogos)}")
-    with col2:
-        st.markdown(f"**📦 Stock:** {len(tiene_stocks)} hojas")
+    if not tiene_stocks:
+        st.warning("⚠️ Carga reportes de stock (YESSICA, APRI.004, APRI.001)")
+        return
     
     st.markdown("---")
     
-    modo_busqueda = st.radio(
-        "📌 Modo de análisis",
-        ["🔍 Buscar por SKU", "📝 Buscar por descripción", "📊 Analizar duplicados"],
-        horizontal=True
-    )
+    # Buscar por descripción
+    st.markdown("### 🔍 Buscar por descripción")
+    st.caption("Ingresa parte de la descripción del producto que buscas")
     
-    if modo_busqueda == "🔍 Buscar por SKU":
-        buscar_por_sku(tiene_catalogos, tiene_stocks)
-    elif modo_busqueda == "📝 Buscar por descripción":
-        buscar_por_descripcion(tiene_catalogos, tiene_stocks)
-    else:
-        analizar_duplicados(tiene_catalogos, tiene_stocks)
+    desc_buscar = st.text_input("Descripción", placeholder="Ej: Earphones Type C Black")
+    
+    if desc_buscar and st.button("🔍 Buscar alternativas", type="primary"):
+        buscar_alternativas(desc_buscar, tiene_catalogos, tiene_stocks)
+
+
+def buscar_alternativas(desc_buscar, catalogos, stocks):
+    """Busca SKUs con descripción similar y muestra stock por separado"""
+    desc_limpia = desc_buscar.strip().lower()
+    resultados = []
+    
+    with st.spinner("Buscando SKUs con descripción similar..."):
+        # Buscar en catálogos por descripción
+        for cat in catalogos:
+            df = cat['df']
+            col_sku = cat['col_sku']
+            col_desc = cat.get('col_desc')
+            
+            if not col_desc:
+                continue
+            
+            for _, row in df.iterrows():
+                desc_catalogo = str(row[col_desc]).lower()
+                if desc_limpia in desc_catalogo:
+                    sku = str(row[col_sku]).strip()
+                    
+                    # Obtener precio del nivel seleccionado
+                    precio_key = st.session_state.get('precio_key', 'P. VIP')
+                    precio = 0
+                    if precio_key in cat.get('precios', {}):
+                        col_precio = cat['precios'][precio_key]
+                        try:
+                            precio = float(row[col_precio]) if pd.notna(row[col_precio]) else 0
+                        except:
+                            precio = 0
+                    
+                    resultados.append({
+                        'sku': sku,
+                        'descripcion': str(row[col_desc])[:150],
+                        'precio': precio,
+                        'catalogo': cat['nombre'][:25]
+                    })
+    
+    if not resultados:
+        st.warning("No se encontraron SKUs con esa descripción")
+        return
+    
+    # Para cada SKU, buscar su stock en las hojas
+    st.success(f"✅ Se encontraron {len(resultados)} SKUs con descripción similar")
+    st.markdown("---")
+    
+    # Mostrar resultados en cards
+    for r in resultados:
+        sku = r['sku']
+        
+        # Buscar stock en cada hoja por separado
+        stock_yessica = 0
+        stock_apri004 = 0
+        stock_apri001 = 0
+        ubicaciones = []
+        
+        for stock in stocks:
+            df = stock['df']
+            col_sku = stock['col_sku']
+            hoja = stock.get('hoja', '')
+            
+            # Detectar columna de cantidad
+            col_cant = None
+            for col in df.columns:
+                col_upper = str(col).upper()
+                if any(p in col_upper for p in ['CANT', 'STOCK', 'DISPONIBLE', 'UNIDADES']):
+                    col_cant = col
+                    break
+            
+            if not col_cant:
+                continue
+            
+            mask = df[col_sku].astype(str).str.strip().str.upper() == sku.upper()
+            if mask.any():
+                row = df[mask].iloc[0]
+                cantidad = 0
+                if col_cant and pd.notna(row[col_cant]):
+                    try:
+                        cantidad = int(float(row[col_cant]))
+                    except:
+                        cantidad = 0
+                
+                ubicaciones.append({'hoja': hoja, 'cantidad': cantidad})
+                
+                if 'YESSICA' in hoja.upper():
+                    stock_yessica = cantidad
+                elif 'APRI.004' in hoja.upper():
+                    stock_apri004 = cantidad
+                elif 'APRI.001' in hoja.upper():
+                    stock_apri001 = cantidad
+        
+        # Calcular stock inmediato (YESSICA + APRI.004)
+        stock_inmediato = stock_yessica + stock_apri004
+        tiene_stock_inmediato = stock_inmediato > 0
+        tiene_stock_remoto = stock_apri001 > 0
+        
+        # Determinar color y mensaje
+        if tiene_stock_inmediato:
+            color_borde = "#4CAF50"
+            estado = "✅ STOCK INMEDIATO DISPONIBLE"
+            estado_color = "#4CAF50"
+        elif tiene_stock_remoto:
+            color_borde = "#FF9800"
+            estado = "⚠️ SOLO STOCK REMOTO (APRI.001) - Solicitar al almacén"
+            estado_color = "#FF9800"
+        else:
+            color_borde = "#f44336"
+            estado = "❌ SIN STOCK"
+            estado_color = "#f44336"
+        
+        # Mostrar card
+        st.markdown(f"""
+        <div style="background:white; border-radius:16px; padding:1rem; margin-bottom:1rem; border-left:5px solid {color_borde}; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                <span style="font-family:monospace; font-weight:bold; background:#e3f2fd; padding:4px 12px; border-radius:8px; color:#1565c0; font-size:0.9rem;">📦 {sku}</span>
+                <span style="background:{color_borde}; color:white; padding:4px 12px; border-radius:20px; font-size:0.7rem; font-weight:bold;">{estado}</span>
+            </div>
+            <div style="font-size:0.85rem; color:#333; margin-bottom:0.75rem; line-height:1.4;">
+                📝 {r['descripcion']}
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:0.75rem; padding:0.5rem; background:#f9f9f9; border-radius:10px;">
+                <div style="background:#4CAF50; color:white; padding:4px 12px; border-radius:15px; font-size:0.7rem;">🟢 YESSICA: {stock_yessica}</div>
+                <div style="background:#FF9800; color:white; padding:4px 12px; border-radius:15px; font-size:0.7rem;">🟡 APRI.004: {stock_apri004}</div>
+                <div style="background:#f44336; color:white; padding:4px 12px; border-radius:15px; font-size:0.7rem;">🔴 APRI.001: {stock_apri001}</div>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="font-size:1rem;">💰 Precio <strong style="color:#e67e22;">{st.session_state.get('precio_key', 'P. VIP')}</strong>: <strong style="color:#e67e22; font-size:1.2rem;">S/ {r['precio']:.2f}</strong></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Selector de cantidad
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            if tiene_stock_inmediato:
+                max_cantidad = stock_inmediato
+                ayuda = f"Máximo disponible en stock inmediato: {stock_inmediato} unidades"
+            elif tiene_stock_remoto:
+                max_cantidad = stock_apri001
+                ayuda = f"Máximo disponible en APRI.001: {stock_apri001} unidades (solicitar al almacén)"
+            else:
+                max_cantidad = 0
+                ayuda = "No hay stock disponible"
+            
+            cantidad = st.number_input(
+                f"Cantidad para {sku}",
+                min_value=0,
+                max_value=max_cantidad if max_cantidad > 0 else 1,
+                value=0,
+                step=1,
+                key=f"cant_{sku}",
+                help=ayuda,
+                disabled=max_cantidad == 0
+            )
+        with col2:
+            if cantidad > 0 and st.button(f"➕ Agregar {sku}", key=f"add_{sku}", use_container_width=True):
+                item = {
+                    'sku': sku,
+                    'descripcion': r['descripcion'],
+                    'cantidad': cantidad,
+                    'precio': r['precio'],
+                    'total': r['precio'] * cantidad,
+                    'stock_yessica': stock_yessica,
+                    'stock_apri004': stock_apri004,
+                    'stock_apri001': stock_apri001,
+                    'tipo_stock': 'inmediato' if tiene_stock_inmediato else 'remoto'
+                }
+                if 'carrito' not in st.session_state:
+                    st.session_state.carrito = []
+                st.session_state.carrito.append(item)
+                st.success(f"✅ Agregado: {cantidad}x {sku}")
+                st.rerun()
+        
+        st.markdown("---")
+    
+    # Resumen final
+    if resultados:
+        st.info("💡 **Tip:** Los SKUs con stock inmediato (YESSICA/APRI.004) se pueden cotizar directamente. Los de APRI.001 requieren solicitud al almacén.")
 
 
 def buscar_por_sku(catalogos, stocks):
-    """Busca un SKU específico en catálogos y stock"""
-    st.markdown("### 🔍 Búsqueda por SKU")
+    """Busca un SKU específico y muestra su stock"""
+    st.markdown("### 🔍 Búsqueda por SKU específico")
     
     sku_buscar = st.text_input("Ingresa el SKU", placeholder="Ej: RN9401276NA8")
     
-    if sku_buscar and st.button("🔍 Buscar", type="primary"):
+    if sku_buscar and st.button("🔍 Buscar SKU", type="primary"):
         sku_limpio = sku_buscar.strip().upper()
-        resultados = []
         
-        with st.spinner("Buscando..."):
-            # 1. Buscar en CATÁLOGOS
-            for cat in catalogos:
-                df = cat['df']
-                col_sku = cat['col_sku']
-                col_desc = cat.get('col_desc')
-                
-                mask = df[col_sku].astype(str).str.strip().str.upper() == sku_limpio
-                for _, row in df[mask].iterrows():
-                    desc = str(row[col_desc])[:200] if col_desc else "Sin descripción"
-                    precios = {}
-                    for nivel, col_precio in cat.get('precios', {}).items():
-                        try:
-                            precios[nivel] = float(row[col_precio]) if pd.notna(row[col_precio]) else 0
-                        except:
-                            precios[nivel] = 0
-                    
-                    resultados.append({
-                        'fuente': f"📚 {cat['nombre'][:25]}",
-                        'sku': sku_limpio,
-                        'descripcion': desc,
-                        'precio_vip': precios.get('P. VIP', 0),
-                        'precio_box': precios.get('P. BOX', 0),
-                        'precio_ir': precios.get('P. IR', 0),
-                        'cantidad': None,
-                        'tipo': 'catalogo'
-                    })
-            
-            # 2. Buscar en STOCK
-            for stock in stocks:
-                df = stock['df']
-                col_sku = stock['col_sku']
-                hoja = stock.get('hoja', 'Desconocida')
-                
-                col_cant = None
-                for col in df.columns:
-                    col_upper = str(col).upper()
-                    if any(p in col_upper for p in ['CANT', 'STOCK', 'DISPONIBLE', 'UNIDADES']):
-                        col_cant = col
-                        break
-                
-                col_desc = None
-                for col in df.columns:
-                    col_upper = str(col).upper()
-                    if any(p in col_upper for p in ['DESC', 'DESCRIPCION', 'PRODUCTO']):
-                        col_desc = col
-                        break
-                
-                mask = df[col_sku].astype(str).str.strip().str.upper() == sku_limpio
-                for _, row in df[mask].iterrows():
-                    cantidad = 0
-                    if col_cant and pd.notna(row[col_cant]):
-                        try:
-                            cantidad = int(float(row[col_cant]))
-                        except:
-                            cantidad = 0
-                    
-                    desc = str(row[col_desc])[:200] if col_desc and pd.notna(row[col_desc]) else f"Stock en {hoja}"
-                    
-                    resultados.append({
-                        'fuente': f"📦 {hoja}",
-                        'sku': sku_limpio,
-                        'descripcion': desc,
-                        'cantidad': cantidad,
-                        'tipo': 'stock'
-                    })
+        # Buscar descripción en catálogos
+        descripcion = f"SKU: {sku_limpio}"
+        precio = 0
         
-        if resultados:
-            st.success(f"✅ {len(resultados)} resultados")
+        for cat in catalogos:
+            df = cat['df']
+            col_sku = cat['col_sku']
+            col_desc = cat.get('col_desc')
             
-            for r in resultados:
-                if r['tipo'] == 'catalogo':
-                    st.markdown(f"""
-                    <div style="background:white; border-radius:12px; padding:0.75rem 1rem; margin-bottom:0.75rem; border-left:4px solid #2196F3; box-shadow:0 2px 4px rgba(0,0,0,0.1); color:#1a1a2e;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                            <span style="font-family:monospace; font-weight:bold; background:#f0f0f0; padding:2px 8px; border-radius:6px; color:#1565c0;">📦 {r['sku']}</span>
-                            <span style="background:#2196F3; color:white; padding:2px 10px; border-radius:20px; font-size:0.65rem; font-weight:bold;">{r['fuente']}</span>
-                        </div>
-                        <div style="font-size:0.8rem; color:#333; margin-bottom:0.5rem;">📝 {r['descripcion'][:100]}{'...' if len(r['descripcion']) > 100 else ''}</div>
-                        <div style="display:flex; flex-wrap:wrap; gap:1rem; font-size:0.75rem; color:#555; padding-top:0.5rem; border-top:1px solid #eee;">
-                            <span style="color:#555;">💰 <strong style="color:#1565c0;">S/ {r['precio_vip']:.2f}</strong> (VIP)</span>
-                            <span style="color:#555;">📦 <strong style="color:#1565c0;">S/ {r['precio_box']:.2f}</strong> (BOX)</span>
-                            <span style="color:#555;">🏷️ <strong style="color:#1565c0;">S/ {r['precio_ir']:.2f}</strong> (IR)</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    color_borde = "#4CAF50" if r['cantidad'] > 0 else "#f44336"
-                    badge_class = "badge-success" if r['cantidad'] > 0 else "badge-danger"
-                    badge_text = "✅ Con stock" if r['cantidad'] > 0 else "❌ Sin stock"
-                    
-                    st.markdown(f"""
-                    <div style="background:white; border-radius:12px; padding:0.75rem 1rem; margin-bottom:0.75rem; border-left:4px solid {color_borde}; box-shadow:0 2px 4px rgba(0,0,0,0.1); color:#1a1a2e;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                            <span style="font-family:monospace; font-weight:bold; background:#f0f0f0; padding:2px 8px; border-radius:6px; color:#1565c0;">📦 {r['sku']}</span>
-                            <span style="background:{color_borde}; color:white; padding:2px 10px; border-radius:20px; font-size:0.65rem; font-weight:bold;">{r['fuente']}</span>
-                        </div>
-                        <div style="font-size:0.8rem; color:#333; margin-bottom:0.5rem;">📝 {r['descripcion'][:100]}{'...' if len(r['descripcion']) > 100 else ''}</div>
-                        <div style="display:flex; flex-wrap:wrap; gap:1rem; font-size:0.75rem; color:#555; padding-top:0.5rem; border-top:1px solid #eee;">
-                            <span style="color:#555;">📊 Cantidad: <strong style="color:#1565c0;">{r['cantidad']}</strong> unidades</span>
-                            <span style="color:#555; background:#f5f5f5; padding:2px 8px; border-radius:12px;">{badge_text}</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            
-            # Botón para enviar al Bulk
-            skus_unicos = list(set([r['sku'] for r in resultados]))
-            if st.button(f"📋 Enviar {len(skus_unicos)} SKU(s) al MODO MASIVO", use_container_width=True):
-                st.session_state.skus_para_procesar = skus_unicos
-                st.success(f"✅ {len(skus_unicos)} SKUs enviados al MODO MASIVO")
-        else:
-            st.error(f"❌ No se encontró el SKU: {sku_buscar}")
-
-
-def buscar_por_descripcion(catalogos, stocks):
-    """Busca por descripción en catálogos y stock"""
-    st.markdown("### 📝 Búsqueda por descripción")
-    
-    desc_buscar = st.text_input("Ingresa la descripción", placeholder="Ej: Cargador USB-C")
-    
-    if desc_buscar and st.button("🔍 Buscar", type="primary"):
-        desc_limpia = desc_buscar.strip().lower()
-        resultados = []
+            mask = df[col_sku].astype(str).str.strip().str.upper() == sku_limpio
+            if mask.any():
+                row = df[mask].iloc[0]
+                if col_desc:
+                    descripcion = str(row[col_desc])[:200]
+                precio_key = st.session_state.get('precio_key', 'P. VIP')
+                if precio_key in cat.get('precios', {}):
+                    col_precio = cat['precios'][precio_key]
+                    try:
+                        precio = float(row[col_precio]) if pd.notna(row[col_precio]) else 0
+                    except:
+                        precio = 0
+                break
         
-        with st.spinner("Buscando en catálogos y stock..."):
-            # Buscar en CATÁLOGOS
-            for cat in catalogos:
-                df = cat['df']
-                col_sku = cat['col_sku']
-                col_desc = cat.get('col_desc')
-                
-                if col_desc:
-                    for _, row in df.iterrows():
-                        desc = str(row[col_desc]).lower()
-                        if desc_limpia in desc:
-                            resultados.append({
-                                'fuente': f"📚 {cat['nombre'][:25]}",
-                                'sku': str(row[col_sku]).strip(),
-                                'descripcion': str(row[col_desc])[:150],
-                                'tipo': 'catalogo'
-                            })
-            
-            # Buscar en STOCK
-            for stock in stocks:
-                df = stock['df']
-                col_sku = stock['col_sku']
-                hoja = stock.get('hoja', 'Desconocida')
-                
-                col_desc = None
-                for col in df.columns:
-                    col_upper = str(col).upper()
-                    if any(p in col_upper for p in ['DESC', 'DESCRIPCION', 'PRODUCTO']):
-                        col_desc = col
-                        break
-                
-                if col_desc:
-                    for _, row in df.iterrows():
-                        desc = str(row[col_desc]).lower()
-                        if desc_limpia in desc:
-                            resultados.append({
-                                'fuente': f"📦 {hoja}",
-                                'sku': str(row[col_sku]).strip(),
-                                'descripcion': str(row[col_desc])[:150],
-                                'tipo': 'stock'
-                            })
+        # Buscar stock
+        stock_yessica = 0
+        stock_apri004 = 0
+        stock_apri001 = 0
         
-        if resultados:
-            st.success(f"✅ {len(resultados)} resultados")
+        for stock in stocks:
+            df = stock['df']
+            col_sku = stock['col_sku']
+            hoja = stock.get('hoja', '')
             
-            # Mostrar en tabla
-            df_resultados = pd.DataFrame(resultados)
-            st.dataframe(df_resultados, use_container_width=True, height=400)
+            col_cant = None
+            for col in df.columns:
+                col_upper = str(col).upper()
+                if any(p in col_upper for p in ['CANT', 'STOCK', 'DISPONIBLE']):
+                    col_cant = col
+                    break
             
-            # Botón para enviar al Bulk
-            skus_unicos = list(set([r['sku'] for r in resultados]))
-            if st.button(f"📋 Enviar {len(skus_unicos)} SKU(s) al MODO MASIVO", use_container_width=True):
-                st.session_state.skus_para_procesar = skus_unicos
-                st.success(f"✅ {len(skus_unicos)} SKUs enviados")
-        else:
-            st.warning("No se encontraron resultados")
-
-
-def analizar_duplicados(catalogos, stocks):
-    """Analiza descripciones duplicadas (SIN SUMAR STOCK)"""
-    st.markdown("### 📊 Análisis de descripciones duplicadas")
-    st.caption("Encuentra la misma descripción con diferentes SKUs en catálogos y hojas de stock")
-    
-    if st.button("🔍 Iniciar análisis", type="primary", use_container_width=True):
-        with st.spinner("Analizando..."):
-            descripciones = defaultdict(list)
+            if not col_cant:
+                continue
             
-            # 1. Analizar CATÁLOGOS
-            for cat in catalogos:
-                df = cat['df']
-                col_sku = cat['col_sku']
-                col_desc = cat.get('col_desc')
+            mask = df[col_sku].astype(str).str.strip().str.upper() == sku_limpio
+            if mask.any():
+                row = df[mask].iloc[0]
+                cantidad = 0
+                if col_cant and pd.notna(row[col_cant]):
+                    try:
+                        cantidad = int(float(row[col_cant]))
+                    except:
+                        cantidad = 0
                 
-                if col_desc:
-                    for _, row in df.iterrows():
-                        sku = str(row[col_sku]).strip()
-                        desc = str(row[col_desc])[:150].strip()
-                        if desc and desc != 'nan':
-                            descripciones[desc].append({
-                                'sku': sku,
-                                'fuente': f"📚 {cat['nombre'][:25]}",
-                                'tipo': 'catalogo'
-                            })
-            
-            # 2. Analizar STOCK
-            for stock in stocks:
-                df = stock['df']
-                col_sku = stock['col_sku']
-                hoja = stock.get('hoja', 'Desconocida')
-                
-                col_desc = None
-                for col in df.columns:
-                    col_upper = str(col).upper()
-                    if any(p in col_upper for p in ['DESC', 'DESCRIPCION', 'PRODUCTO']):
-                        col_desc = col
-                        break
-                
-                if col_desc:
-                    for _, row in df.iterrows():
-                        sku = str(row[col_sku]).strip()
-                        desc = str(row[col_desc])[:150].strip()
-                        if desc and desc != 'nan':
-                            descripciones[desc].append({
-                                'sku': sku,
-                                'fuente': f"📦 {hoja}",
-                                'tipo': 'stock'
-                            })
-            
-            # Filtrar duplicadas
-            duplicadas = {desc: items for desc, items in descripciones.items() if len(items) > 1}
-            
-            # Estadísticas
-            st.markdown(f"""
-            <div style="background:linear-gradient(135deg,#1a237e 0%,#283593 100%); border-radius:12px; padding:1rem; margin:1rem 0; text-align:center; box-shadow:0 4px 15px rgba(0,0,0,0.2);">
-                <h4 style="color:white; margin:0 0 0.5rem 0; font-size:1.1rem;">📊 Resumen del análisis</h4>
-                <div style="display:flex; justify-content:space-around;">
-                    <div><span style="color:white; font-size:1rem;">📝 Total descripciones</span><br><span style="font-size:2rem; font-weight:bold; color:#ff9800;">{len(descripciones)}</span></div>
-                    <div><span style="color:white; font-size:1rem;">🔄 Con múltiples SKUs</span><br><span style="font-size:2rem; font-weight:bold; color:#ff9800;">{len(duplicadas)}</span></div>
-                </div>
+                if 'YESSICA' in hoja.upper():
+                    stock_yessica = cantidad
+                elif 'APRI.004' in hoja.upper():
+                    stock_apri004 = cantidad
+                elif 'APRI.001' in hoja.upper():
+                    stock_apri001 = cantidad
+        
+        stock_inmediato = stock_yessica + stock_apri004
+        
+        st.markdown(f"""
+        <div style="background:white; border-radius:16px; padding:1rem; margin-top:1rem; border-left:5px solid { '#4CAF50' if stock_inmediato > 0 else '#FF9800' if stock_apri001 > 0 else '#f44336' }; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                <span style="font-family:monospace; font-weight:bold; background:#e3f2fd; padding:4px 12px; border-radius:8px; color:#1565c0; font-size:0.9rem;">📦 {sku_limpio}</span>
             </div>
-            """, unsafe_allow_html=True)
-            
-            if duplicadas:
-                st.markdown("### 🔍 Descripciones con múltiples SKUs")
-                
-                for desc, items in list(duplicadas.items())[:30]:
-                    skus_vistos = {}
-                    for item in items:
-                        if item['sku'] not in skus_vistos:
-                            skus_vistos[item['sku']] = []
-                        skus_vistos[item['sku']].append(item['fuente'])
-                    
-                    skus_info = []
-                    for sku, fuentes in skus_vistos.items():
-                        fuentes_str = ', '.join(fuentes[:2])
-                        if len(fuentes) > 2:
-                            fuentes_str += f" +{len(fuentes)-2}"
-                        skus_info.append(f"<code style='background:#f0f0f0; padding:4px 10px; border-radius:6px; color:#d63384; font-size:0.85rem;'>{sku}</code> <span style='font-size:0.7rem; color:#666;'>({fuentes_str})</span>")
-                    
-                    st.markdown(f"""
-                    <div style="background:#FFF3E0; border-radius:12px; padding:1rem; margin-bottom:0.75rem; border-left:4px solid #FF9800; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-                        <div style="font-size:0.95rem; margin-bottom:0.5rem; color:#1a1a2e;"><strong style="color:#1a1a2e;">📝 {desc[:100]}</strong></div>
-                        <div style="font-size:0.85rem; color:#1a1a2e; margin-top:0.5rem;"><strong style="color:#1a1a2e;">🏷️ SKUs ({len(skus_vistos)}):</strong></div>
-                        <div style="margin-top:0.5rem; display:flex; flex-wrap:wrap; gap:0.5rem;">{' '.join(skus_info[:5])}{'...' if len(skus_info) > 5 else ''}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                if len(duplicadas) > 30:
-                    st.info(f"... y {len(duplicadas) - 30} descripciones más")
-                
-                # Botón para exportar
-                reporte_data = []
-                for desc, items in duplicadas.items():
-                    for item in items:
-                        reporte_data.append({
-                            'descripcion': desc,
-                            'sku': item['sku'],
-                            'fuente': item['fuente']
-                        })
-                
-                if reporte_data:
-                    df_reporte = pd.DataFrame(reporte_data)
-                    csv = df_reporte.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="📥 Descargar reporte CSV",
-                        data=csv,
-                        file_name="reporte_descripciones_duplicadas.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-            else:
-                st.success("✅ No se encontraron descripciones duplicadas. ¡Todo está consistente!")
+            <div style="font-size:0.85rem; color:#333; margin-bottom:0.75rem;">📝 {descripcion}</div>
+            <div style="display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:0.75rem;">
+                <div style="background:#4CAF50; color:white; padding:4px 12px; border-radius:15px; font-size:0.7rem;">🟢 YESSICA: {stock_yessica}</div>
+                <div style="background:#FF9800; color:white; padding:4px 12px; border-radius:15px; font-size:0.7rem;">🟡 APRI.004: {stock_apri004}</div>
+                <div style="background:#f44336; color:white; padding:4px 12px; border-radius:15px; font-size:0.7rem;">🔴 APRI.001: {stock_apri001}</div>
+            </div>
+            <div style="font-size:1rem;">💰 Precio: <strong style="color:#e67e22;">S/ {precio:.2f}</strong></div>
+        </div>
+        """, unsafe_allow_html=True)
