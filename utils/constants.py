@@ -1,4 +1,4 @@
-# Constantes globales del sistema
+# utils/constants.py - VERSIÓN COMPLETA
 
 ALMACENES = {
     "YESSICA": {"orden": 1, "color": "verde", "tipo": "inmediato"},
@@ -20,3 +20,12 @@ ROLES = {
 }
 
 PRECIO_KEYS = ["P. VIP", "P. BOX", "P. IR"]
+
+# ========== CONSTANTES PARA data_loader.py ==========
+CATALOGO_COLUMNAS = ["SKU", "COD", "SAP", "NUMERO", "ARTICULO", "CODIGO"]
+STOCK_COLUMNA_CLAVE = "Disponible"
+COLUMNAS_A_IGNORAR = ["En stock", "Comprometido", "Solicitado", "Reservado"]
+
+# ========== CONSTANTES PARA search_engine.py ==========
+CATALOGO_COLUMNAS_BUSCAR = ["SKU", "COD", "SAP", "NUMERO", "ARTICULO", "CODIGO"]
+DESCRIPCION_COLUMNAS = ["DESC", "DESCRIPCION", "NOMBRE", "PRODUCTO", "GOODS"]
