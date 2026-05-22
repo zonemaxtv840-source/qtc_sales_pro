@@ -1,78 +1,44 @@
-# app.py - QTC Smart Sales Pro v5.0 (Versión Mejorada)
 import streamlit as st
-from datetime import datetime
+from modules.auth import inicializar_sesion, mostrar_login
+from modules.ui_components import aplicar_estilos_globales
 
-# Configuración de página (DEBE SER LO PRIMERO)
+# Configuración de página
 st.set_page_config(
-    page_title="QTC Smart Sales Pro",
-    page_icon="💼",
+    page_title="QTC SMART SALES PRO",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Importaciones modulares
-from modules.auth import inicializar_sesion, mostrar_pantalla_login, cerrar_sesion
-from ui.styles import apply_custom_styles
-from ui.components import mostrar_header, render_sidebar
-from ui.tabs.bulk_tab import render_bulk_tab
-from ui.tabs.search_tab import render_search_tab
-from ui.tabs.cart_tab import render_cart_tab
-from ui.tabs.skuscraper_tab import render_skuscraper_tab
+# Inicializar
+inicializar_sesion()
+aplicar_estilos_globales()
 
-
-def main():
-    """Función principal de la aplicación"""
+# Login
+if not st.session_state.autenticado:
+    mostrar_login()
+else:
+    # Sidebar con info del usuario
+    with st.sidebar:
+        st.markdown(f"### 👤 {st.session_state.usuario.upper()}")
+        if st.button("🚪 Cerrar sesión"):
+            st.session_state.autenticado = False
+            st.session_state.carrito = []
+            st.rerun()
     
-    # Aplicar estilos CSS
-    apply_custom_styles()
+    # Importar y mostrar páginas
+    from pages import (01_masivo, 02_busqueda_inteligente, 
+                       03_carrito, 04_sku_scraper)
     
-    # Inicializar sesión
-    inicializar_sesion()
+    # Menú principal
+    tabs = st.tabs(["📦 MODO MASIVO", "🔍 BÚSQUEDA INTELIGENTE", 
+                    "🛒 CARRITO", "🔧 SKU SCRAPER"])
     
-    # Verificar autenticación
-    if not st.session_state.auth:
-        mostrar_pantalla_login()
-        return
-    
-    # Renderizar sidebar
-    render_sidebar()
-    
-    # Mostrar header
-    if not mostrar_header(st.session_state.user_name, st.session_state.user_role):
-        cerrar_sesion()
-        st.rerun()
-        return
-    
-    st.markdown("---")
-    
-    # 4 Tabs principales
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📦 MODO MASIVO (Bulk)", 
-        "🔍 BÚSQUEDA INTELIGENTE", 
-        "🛒 CARRITO DE COTIZACIÓN",
-        "🔧 SKU SCRAPER"
-    ])
-    
-    with tab1:
-        render_bulk_tab()
-    
-    with tab2:
-        render_search_tab()
-    
-    with tab3:
-        render_cart_tab()
-    
-    with tab4:
-        render_skuscraper_tab()
-    
-    # Footer
-    st.markdown("---")
-    st.markdown(
-        f'<div class="footer">⚡ QTC Smart Sales Pro v5.0 | Modo: {st.session_state.get("modo", "XIAOMI")} | '
-        f'{datetime.now().strftime("%Y-%m-%d %H:%M")}</div>',
-        unsafe_allow_html=True
-    )
-
-
-if __name__ == "__main__":
-    main()
+    with tabs[0]:
+        01_masivo.mostrar()
+    with tabs[1]:
+        02_busqueda_inteligente.mostrar()
+    with tabs[2]:
+        03_carrito.mostrar()
+    with tabs[3]:
+        04_sku_scraper.mostrar()
