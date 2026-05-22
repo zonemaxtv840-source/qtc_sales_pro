@@ -50,9 +50,8 @@ else:
         st.warning("⚠️ Por favor carga los archivos de catálogo y stock en el panel izquierdo")
         st.stop()
     
-    # Importar y mostrar páginas
-    from pages import (01_masivo, 02_busqueda_inteligente, 
-                       03_carrito, 04_sku_scraper)
+    # Importar y mostrar páginas (NOMBRES CORREGIDOS)
+    from pages import masivo, busqueda_inteligente, carrito, sku_scraper
     
     # Menú principal con tabs más profesionales
     st.markdown("""
@@ -65,10 +64,10 @@ else:
     tabs = st.tabs(["📦 MODO MASIVO", "🔍 BÚSQUEDA INTELIGENTE", "🛒 CARRITO", "🔧 SKU SCRAPER"])
     
     with tabs[0]:
-        01_masivo.mostrar()
+        masivo.mostrar()
     with tabs[1]:
-        02_busqueda_inteligente.mostrar()
+        busqueda_inteligente.mostrar()
     with tabs[2]:
-        03_carrito.mostrar()
+        carrito.mostrar()
     with tabs[3]:
-        04_sku_scraper.mostrar()
+        sku_scraper.mostrar()
