@@ -1,4 +1,4 @@
-# app.py - QTC Smart Sales Pro v5.0 (CON IMPORTS SEGUROS)
+# app.py - QTC Smart Sales Pro v5.0 (ORDEN CORREGIDO)
 
 import streamlit as st
 import pandas as pd
@@ -32,7 +32,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================
-# FUNCIONES BÁSICAS
+# FUNCIONES (DEFINIDAS PRIMERO)
 # ============================================
 
 def corregir_numero(valor) -> float:
@@ -70,6 +70,24 @@ def detectar_columna_sku(df: pd.DataFrame) -> str:
                 return col
     return df.columns[0]
 
+def cargar_archivo(uploaded_file):
+    """Carga archivo Excel o CSV"""
+    if uploaded_file is None:
+        return None
+    nombre = uploaded_file.name.lower()
+    try:
+        if nombre.endswith('.csv'):
+            try:
+                df = pd.read_csv(uploaded_file, encoding='utf-8')
+            except:
+                df = pd.read_csv(uploaded_file, encoding='latin-1')
+        else:
+            df = pd.read_excel(uploaded_file)
+        return limpiar_cabeceras(df)
+    except Exception as e:
+        st.error(f"Error cargando {nombre}: {str(e)[:80]}")
+        return None
+
 # ============================================
 # INICIALIZACIÓN DE SESIÓN
 # ============================================
@@ -94,7 +112,7 @@ if 'user_name' not in st.session_state:
     st.session_state.user_name = None
 
 # ============================================
-# LOGIN
+# LOGIN (OCULTA TODO LO DEMÁS)
 # ============================================
 
 if not st.session_state.auth:
@@ -102,28 +120,46 @@ if not st.session_state.auth:
     with col2:
         st.markdown('<div style="background:rgba(255,255,255,0.95);border-radius:20px;padding:2rem;">', unsafe_allow_html=True)
         
+        try:
+            st.image("logo.png", width=100)
+        except:
+            st.markdown("<h1 style='color:#e94560;text-align:center;'>QTC</h1>", unsafe_allow_html=True)
+        
         st.markdown("<h2 style='color:#1a1a2e;text-align:center;'>QTC Smart Sales Pro</h2>", unsafe_allow_html=True)
         st.markdown("<p style='color:#666;text-align:center;'>Sistema Profesional de Cotización</p>", unsafe_allow_html=True)
         
         usuario = st.text_input("👤 Usuario", placeholder="admin / kimberly / vendedor")
         password = st.text_input("🔒 Contraseña", type="password")
         
-        if st.button("🚀 Ingresar", use_container_width=True):
-            credenciales = {
-                "admin": {"password": "qtc2026", "rol": "ADMIN", "nombre": "Administrador"},
-                "kimberly": {"password": "kam2026", "rol": "KAM", "nombre": "Kimberly"},
-                "vendedor": {"password": "ventas2026", "rol": "VENDEDOR", "nombre": "Vendedor"}
-            }
-            if usuario in credenciales and password == credenciales[usuario]["password"]:
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("🚀 Ingresar", use_container_width=True):
+                credenciales = {
+                    "admin": {"password": "qtc2026", "rol": "ADMIN", "nombre": "Administrador"},
+                    "kimberly": {"password": "kam2026", "rol": "KAM", "nombre": "Kimberly"},
+                    "vendedor": {"password": "ventas2026", "rol": "VENDEDOR", "nombre": "Vendedor"}
+                }
+                if usuario in credenciales and password == credenciales[usuario]["password"]:
+                    st.session_state.auth = True
+                    st.session_state.user_role = credenciales[usuario]["rol"]
+                    st.session_state.user_name = credenciales[usuario]["nombre"]
+                    st.rerun()
+                else:
+                    st.error("❌ Credenciales incorrectas")
+        with col_btn2:
+            if st.button("👤 Invitado", use_container_width=True):
                 st.session_state.auth = True
-                st.session_state.user_role = credenciales[usuario]["rol"]
-                st.session_state.user_name = credenciales[usuario]["nombre"]
+                st.session_state.user_role = "INVITADO"
+                st.session_state.user_name = "Invitado"
                 st.rerun()
-            else:
-                st.error("❌ Credenciales incorrectas")
         
         st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
+    
+    st.stop()  # DETIENE TODO AQUÍ
+
+# ============================================
+# TODO LO SIGUIENTE SOLO SI ESTÁ AUTENTICADO
+# ============================================
 
 # ============================================
 # HEADER
@@ -155,7 +191,7 @@ with col3:
 st.markdown("---")
 
 # ============================================
-# SIDEBAR - CARGA DE ARCHIVOS
+# SIDEBAR (SOLO SE MUESTRA SI ESTÁ AUTENTICADO)
 # ============================================
 
 with st.sidebar:
@@ -228,46 +264,18 @@ tab1, tab2, tab3 = st.tabs(["📦 MODO MASIVO", "🔍 BÚSQUEDA", "🛒 CARRITO"
 
 with tab1:
     st.markdown("### 📦 Modo Masivo")
-    st.info("Carga archivos en el panel izquierdo para comenzar")
     
     if st.session_state.catalogos and st.session_state.stocks:
         st.success(f"✅ Sistema listo - {len(st.session_state.catalogos)} catálogos, {len(st.session_state.stocks)} stocks cargados")
+        
+        texto_bulk = st.text_area("Ingresa SKUs:", height=150, placeholder="RN0200065BK8:5\nCN0200047BK8:10")
+        
+        if st.button("Procesar lista", type="primary"):
+            if texto_bulk:
+                st.info("Procesando... (función completa en desarrollo)")
+            else:
+                st.warning("Ingresa al menos un SKU")
     else:
-        st.warning("⚠️ Esperando carga de archivos...")
-
-with tab2:
-    st.markdown("### 🔍 Búsqueda Inteligente")
-    busqueda = st.text_input("", placeholder="Ej: 'RN0200065BK8' o 'Type-C Earphones'")
-    if busqueda and len(busqueda) >= 2:
-        st.info(f"Buscando: {busqueda}")
-
-with tab3:
-    st.markdown("### 🛒 Carrito")
-    if not st.session_state.carrito:
-        st.info("No hay productos en el carrito")
-    else:
-        for item in st.session_state.carrito:
-            st.write(f"- {item.get('sku')}: {item.get('cantidad')} x S/ {item.get('precio', 0):.2f}")
-
-# ============================================
-# FOOTER
-# ============================================
-
-st.markdown("---")
-st.markdown(f'<div class="footer">⚡ QTC Smart Sales Pro v5.0 | Modo: {st.session_state.modo} | {datetime.now().strftime("%Y-%m-%d %H:%M")}</div>', unsafe_allow_html=True)
-
-# ============================================
-# FUNCIÓN PARA CARGAR ARCHIVOS
-# ============================================
-
-def cargar_archivo(uploaded_file):
-    nombre = uploaded_file.name.lower()
-    try:
-        if nombre.endswith('.csv'):
-            df = pd.read_csv(uploaded_file, encoding='utf-8')
-        else:
-            df = pd.read_excel(uploaded_file)
-        return limpiar_cabeceras(df)
-    except Exception as e:
-        st.error(f"Error: {str(e)[:80]}")
-        return None
+        st.info("📌 Carga archivos de catálogo y stock en el panel izquierdo")
+        st.markdown("""
+        ### Formato de ejemplo:
