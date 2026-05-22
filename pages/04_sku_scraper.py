@@ -2,43 +2,36 @@ import streamlit as st
 import pandas as pd
 
 def mostrar():
-    st.markdown("## 🛒 Carrito de Cotización")
+    st.markdown("## 🔧 Analizador de SKUs")
     
-    if not st.session_state.carrito:
-        st.info("El carrito está vacío. Agrega productos desde MODO MASIVO o BÚSQUEDA.")
+    if not st.session_state.get("catalogo") is not None:
+        st.warning("Primero carga un catálogo en el sidebar")
         return
     
-    # Mostrar carrito
-    total = 0
-    for i, item in enumerate(st.session_state.carrito):
-        subtotal = item["cantidad"] * item["precio"]
-        total += subtotal
-        
-        col1, col2, col3, col4, col5 = st.columns([2,3,1,1,1])
-        with col1:
-            st.write(item["sku"])
-        with col2:
-            st.write(item["descripcion"][:40])
-        with col3:
-            st.write(f"S/ {item['precio']:.2f}")
-        with col4:
-            st.write(item["cantidad"])
-        with col5:
-            st.write(f"S/ {subtotal:.2f}")
-        
-        if st.button("❌", key=f"del_{i}"):
-            st.session_state.carrito.pop(i)
-            st.rerun()
+    df = st.session_state.catalogo
     
-    st.divider()
-    col1, col2, col3 = st.columns([2,1,1])
+    # Estadísticas
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total SKUs", len(df))
     with col2:
-        st.metric("TOTAL", f"S/ {total:.2f}")
+        skus_norm = df["SKU"].astype(str).str.upper()
+        duplicados = skus_norm.duplicated().sum()
+        st.metric("SKUs duplicados", duplicados)
     with col3:
-        if st.button("📥 Exportar a Excel", use_container_width=True):
-            df = pd.DataFrame(st.session_state.carrito)
-            df.to_excel("cotizacion.xlsx", index=False)
-            st.success("✅ Cotización exportada")
-        if st.button("🗑️ Limpiar carrito", use_container_width=True):
-            st.session_state.carrito = []
-            st.rerun()
+        sin_precio = df["Precio VIP"].isna().sum() if "Precio VIP" in df.columns else 0
+        st.metric("Sin precio", sin_precio)
+    
+    # Mostrar duplicados
+    if duplicados > 0:
+        st.subheader("⚠️ SKUs Duplicados")
+        duplicados_df = df[skus_norm.duplicated(keep=False)].sort_values("SKU")
+        st.dataframe(duplicados_df, use_container_width=True)
+    
+    # Detectar SKUs problemáticos
+    st.subheader("🔍 SKUs con formato anómalo")
+    skus_validos = df["SKU"].astype(str).str.match(r'^[A-Z0-9]{8,}$')
+    anomalos = df[~skus_validos]
+    if len(anomalos) > 0:
+        st.warning(f"{len(anomalos)} SKUs con formato inusual")
+        st.dataframe(anomalos[["SKU", "Descripcion"]], use_container_width=True)
