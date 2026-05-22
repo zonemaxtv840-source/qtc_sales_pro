@@ -1,73 +1,147 @@
+# app.py - QTC Smart Sales Pro v5.0 (MODULAR)
+# Versión completamente modular con pages independientes
+
 import streamlit as st
 from modules.auth import inicializar_sesion, mostrar_login
-from modules.ui_components import aplicar_estilos_globales
-from modules.data_loader import cargar_catalogo, cargar_stock_completo
+from modules.ui_components import aplicar_estilos_globales, mostrar_header
+from modules.data_loader import cargar_catalogo, cargar_stock, cargar_ugreen_catalogo
+from modules.stock_engine import buscar_stock_para_sku, buscar_producto, buscar_ugreen_producto
 
-# Configuración de página (DEBE SER PRIMERO)
+# ============================================
+# CONFIGURACIÓN DE PÁGINA
+# ============================================
+
 st.set_page_config(
-    page_title="QTC SMART SALES PRO",
-    page_icon="📊",
+    page_title="QTC Smart Sales Pro",
+    page_icon="💼",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Inicializar
+# ============================================
+# INICIALIZACIÓN
+# ============================================
+
 inicializar_sesion()
 aplicar_estilos_globales()
 
-# Carga de datos en sidebar (visible antes de login)
-with st.sidebar:
-    st.markdown("## 📁 DATOS")
-    
-    catalogo_file = st.file_uploader("📊 Catálogo de precios", type=["xlsx", "csv"])
-    stock_file = st.file_uploader("📦 Archivo de stock", type=["xlsx"])
-    
-    if catalogo_file and stock_file:
-        with st.spinner("Cargando datos..."):
-            st.session_state.catalogo = cargar_catalogo(catalogo_file)
-            st.session_state.stock = cargar_stock_completo(stock_file)
-            if st.session_state.catalogo is not None:
-                st.success(f"✅ {len(st.session_state.catalogo)} productos cargados")
-            if st.session_state.stock:
-                total_items = sum(len(df) for df in st.session_state.stock.values())
-                st.success(f"✅ {total_items} registros de stock")
+# ============================================
+# LOGIN
+# ============================================
 
-# Login
-if not st.session_state.autenticado:
+if not st.session_state.auth:
     mostrar_login()
-else:
-    # Sidebar con info del usuario
-    with st.sidebar:
-        st.divider()
-        st.markdown(f"### 👤 {st.session_state.usuario.upper()}")
-        if st.button("🚪 Cerrar sesión", use_container_width=True):
-            st.session_state.autenticado = False
+    st.stop()
+
+# ============================================
+# HEADER
+# ============================================
+
+mostrar_header()
+
+# ============================================
+# SIDEBAR - CARGA DE ARCHIVOS
+# ============================================
+
+with st.sidebar:
+    st.markdown("### 🎯 Configuración")
+    
+    marca_seleccionada = st.radio(
+        "📌 Marca / Modo",
+        ["XIAOMI", "UGREEN", "OTRAS MARCAS"],
+        index=0 if st.session_state.modo == "XIAOMI" else 1,
+        help="XIAOMI: Stock YESSICA/APRI.004/APRI.001\nUGREEN: Catálogo específico"
+    )
+    st.session_state.modo = marca_seleccionada
+    
+    st.markdown("---")
+    
+    precio_opcion = st.radio(
+        "💰 Nivel de precio",
+        ["P. VIP", "P. BOX", "P. IR"],
+        index=0
+    )
+    st.session_state.precio_key = precio_opcion
+    
+    st.markdown("---")
+    
+    st.markdown("### 📂 Archivos")
+    
+    if marca_seleccionada != "UGREEN":
+        st.markdown("**📚 Catálogos de precios**")
+        archivos_cat = st.file_uploader(
+            "Excel o CSV",
+            type=['xlsx', 'xls', 'csv'],
+            accept_multiple_files=True,
+            key="cat_upload"
+        )
+        if archivos_cat:
+            st.session_state.catalogos = []
+            for archivo in archivos_cat:
+                from modules.data_loader import cargar_catalogo
+                cat = cargar_catalogo(archivo)
+                if cat:
+                    st.session_state.catalogos.append(cat)
+                    st.success(f"✅ {archivo.name[:30]}")
+    
+    if marca_seleccionada == "UGREEN":
+        st.markdown("**📚 Catálogo UGREEN**")
+        archivo_ugreen = st.file_uploader(
+            "Excel UGREEN",
+            type=['xlsx', 'xls'],
+            accept_multiple_files=False,
+            key="ugreen_upload"
+        )
+        if archivo_ugreen:
+            ugreen_cat = cargar_ugreen_catalogo(archivo_ugreen)
+            if ugreen_cat:
+                st.session_state.ugreen_catalogo = ugreen_cat
+                st.success(f"✅ UGREEN: {archivo_ugreen.name[:30]}")
+    
+    st.markdown("**📦 Reportes de stock**")
+    st.caption("📌 APRI.001 usa columna 'Disponible'")
+    archivos_stock = st.file_uploader(
+        "Excel",
+        type=['xlsx', 'xls'],
+        accept_multiple_files=True,
+        key="stock_upload"
+    )
+    if archivos_stock:
+        st.session_state.stocks = cargar_stock(archivos_stock, st.session_state.modo)
+    
+    st.markdown("---")
+    
+    if st.session_state.carrito:
+        st.markdown(f"### 🛒 Carrito")
+        st.metric("Productos", len(st.session_state.carrito))
+        total = sum(item.get('total', 0) for item in st.session_state.carrito)
+        st.metric("Total", f"S/ {total:,.2f}")
+        
+        if st.button("🧹 Limpiar carrito", use_container_width=True):
             st.session_state.carrito = []
             st.rerun()
-    
-    # Verificar que hay datos cargados
-    if st.session_state.get("catalogo") is None or st.session_state.get("stock") is None:
-        st.warning("⚠️ Por favor carga los archivos de catálogo y stock en el panel izquierdo")
-        st.stop()
-    
-    # Importar y mostrar páginas (NOMBRES CORREGIDOS)
-    from pages import masivo, busqueda_inteligente, carrito, sku_scraper
-    
-    # Menú principal con tabs más profesionales
-    st.markdown("""
-    <div style="text-align: center; margin-bottom: 20px;">
-        <h1>🏢 QTC SMART SALES PRO</h1>
-        <p style="color: #aaa;">Sistema profesional de cotizaciones</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    tabs = st.tabs(["📦 MODO MASIVO", "🔍 BÚSQUEDA INTELIGENTE", "🛒 CARRITO", "🔧 SKU SCRAPER"])
-    
-    with tabs[0]:
-        masivo.mostrar()
-    with tabs[1]:
-        busqueda_inteligente.mostrar()
-    with tabs[2]:
-        carrito.mostrar()
-    with tabs[3]:
-        sku_scraper.mostrar()
+
+# ============================================
+# TABS PRINCIPALES - LLAMADA A PAGES
+# ============================================
+
+from pages import masivo, busqueda, carrito
+
+tab1, tab2, tab3 = st.tabs(["📦 MODO MASIVO (Bulk)", "🔍 BÚSQUEDA INTELIGENTE", "🛒 CARRITO DE COTIZACIÓN"])
+
+with tab1:
+    masivo.mostrar()
+
+with tab2:
+    busqueda.mostrar()
+
+with tab3:
+    carrito.mostrar()
+
+# ============================================
+# FOOTER
+# ============================================
+
+from datetime import datetime
+st.markdown("---")
+st.markdown(f'<div class="footer">⚡ QTC Smart Sales Pro v5.0 (Modular) | Modo: {st.session_state.modo} | YESSICA/APRI.004: stock inmediato | APRI.001: stock remoto | {datetime.now().strftime("%Y-%m-%d %H:%M")}</div>', unsafe_allow_html=True)
