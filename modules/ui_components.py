@@ -1,74 +1,58 @@
 import streamlit as st
-from utils.constants import COLORES_BADGES, ALMACENES
+from datetime import datetime
 
-def construir_badge_stock(stock_dict):
-    """HTML para badges de stock"""
-    badges = []
-    for almacen in ["YESSICA", "APRI.004", "APRI.001"]:
-        cantidad = stock_dict.get(almacen, 0)
-        color = COLORES_BADGES.get(almacen, "gris")
-        if cantidad > 0:
-            badges.append(f'<span style="background:{color}; padding:4px 12px; border-radius:20px; font-size:12px; margin:2px; display:inline-block;">📦 {almacen}: {cantidad}</span>')
-        else:
-            badges.append(f'<span style="background:#95a5a6; padding:4px 12px; border-radius:20px; font-size:12px; margin:2px; display:inline-block; opacity:0.5;">❌ {almacen}: 0</span>')
-    return " ".join(badges)
-
-def crear_tarjeta_producto(producto, inventario, key_suffix=""):
-    """Crea card de producto profesional"""
-    badges_html = construir_badge_stock(inventario["stock"])
-    precio = inventario["precio"] or 0
-    precio_texto = f"S/ {precio:,.2f}" if precio else "Consultar precio"
-    
-    card_html = f"""
-    <div style="background:white; border-radius:16px; padding:20px; margin:12px 0; box-shadow:0 2px 8px rgba(0,0,0,0.05); border:1px solid #eef2f6;">
-        <div style="display:flex; justify-content:space-between; align-items:start;">
-            <div style="flex:1;">
-                <h4 style="color:#1a1a2e; margin:0 0 8px 0;">{producto.get('Descripcion', 'Sin descripción')}</h4>
-                <p style="color:#7f8c8d; font-size:13px; margin:0 0 12px 0;">
-                    <strong>SKU:</strong> {inventario['sku']}
-                </p>
-                <div style="margin:12px 0;">
-                    {badges_html}
-                </div>
-            </div>
-            <div style="text-align:right; min-width:150px;">
-                <div style="font-size:24px; font-weight:bold; color:#e67e22;">
-                    {precio_texto}
-                </div>
-            </div>
-        </div>
+def construir_badge_stock(stock_yessica: int, stock_apri004: int, stock_apri001: int) -> str:
+    """Construye badges para los 3 almacenes"""
+    return f"""
+    <div style="display:flex; flex-wrap:wrap; gap:8px; margin:8px 0;">
+        <span class="badge-yessica">🟢 YESSICA: {stock_yessica}</span>
+        <span class="badge-apri004">🟡 APRI.004: {stock_apri004}</span>
+        <span class="badge-apri001">🔴 APRI.001: {stock_apri001}</span>
     </div>
     """
-    return card_html
 
 def aplicar_estilos_globales():
-    """CSS global de la aplicación"""
+    """Aplica CSS global a la aplicación"""
     st.markdown("""
     <style>
-    .stApp {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-    .main > div {
-        background: transparent;
-    }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background: rgba(255,255,255,0.1);
-        padding: 8px;
-        border-radius: 12px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 8px;
-        padding: 8px 20px;
-        background: rgba(255,255,255,0.2);
-        color: white;
-    }
-    .stTabs [aria-selected="true"] {
-        background: white;
-        color: #1a1a2e;
-    }
-    div[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #ff9a9e 0%, #fecfef 100%);
-    }
+        .stApp { background: linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1e88e5 100%); }
+        [data-testid="stSidebar"] { background: linear-gradient(180deg, #f8a35e 0%, #e87a2d 50%, #d45a1a 100%); border-right: 1px solid #ffcc80; }
+        [data-testid="stSidebar"] * { color: #ffffff !important; }
+        .stMarkdown, .stText, .stNumberInput label, .stSelectbox label { color: #ffffff !important; }
+        h1, h2, h3 { color: #ffffff !important; }
+        div[style*="background:white"] * { color: #1a1a2e !important; }
+        .counter-summary { background: rgba(0,0,0,0.3); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; display: flex; justify-content: space-around; flex-wrap: wrap; }
+        .counter-item { text-align: center; padding: 0.5rem; }
+        .badge-yessica { background: #4CAF50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; display: inline-block; margin: 2px; }
+        .badge-apri004 { background: #FF9800; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; display: inline-block; margin: 2px; }
+        .badge-apri001 { background: #f44336; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; display: inline-block; margin: 2px; }
+        .badge-ugreen { background: #00BCD4; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; display: inline-block; margin: 2px; }
+        .footer { text-align: center; padding: 1rem; color: rgba(255,255,255,0.7); font-size: 0.7rem; border-top: 1px solid rgba(255,255,255,0.2); margin-top: 2rem; }
     </style>
     """, unsafe_allow_html=True)
+
+def mostrar_header():
+    """Muestra el header con información del usuario"""
+    col1, col2, col3 = st.columns([1, 5, 2])
+    with col1:
+        try:
+            st.image("logo.png", width=60)
+        except:
+            st.markdown("**QTC**", unsafe_allow_html=True)
+    with col2:
+        st.markdown("# QTC Smart Sales Pro")
+        st.caption("Sistema Profesional de Cotización | Soporte XIAOMI · UGREEN · OTRAS MARCAS")
+    with col3:
+        role_badge = {"ADMIN": "🔧", "KAM": "⭐", "VENDEDOR": "🛒", "INVITADO": "👤"}
+        badge = role_badge.get(st.session_state.user_role, "👤")
+        st.markdown(f"""
+        <div style="background: rgba(255,255,255,0.1); padding: 0.5rem 1rem; border-radius: 12px; text-align: right;">
+            <span>{badge} {st.session_state.user_name}</span><br>
+            <span style="font-size: 0.7rem;">{st.session_state.user_role}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("🚪 Cerrar Sesión", key="logout"):
+            st.session_state.auth = False
+            st.session_state.carrito = []
+            st.rerun()
+    st.markdown("---")
