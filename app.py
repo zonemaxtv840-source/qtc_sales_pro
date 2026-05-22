@@ -1,17 +1,16 @@
-# app.py - QTC Smart Sales Pro v5.0
+# app.py - QTC Smart Sales Pro v5.0 (SIN pages, SIN sidebar antes del login)
 
 import streamlit as st
 import pandas as pd
 import re
 import io
 from datetime import datetime
-from difflib import SequenceMatcher
 
 st.set_page_config(
     page_title="QTC Smart Sales Pro",
     page_icon="💼",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"  # ← Sidebar colapsado por defecto
 )
 
 # ============================================
@@ -23,16 +22,12 @@ st.markdown("""
     .stApp { background: linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1e88e5 100%); }
     [data-testid="stSidebar"] { background: linear-gradient(180deg, #f8a35e 0%, #e87a2d 50%, #d45a1a 100%); }
     [data-testid="stSidebar"] * { color: #ffffff !important; }
-    .badge-yessica { background: #4CAF50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; display: inline-block; margin: 2px; }
-    .badge-apri004 { background: #FF9800; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; display: inline-block; margin: 2px; }
-    .badge-apri001 { background: #f44336; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; display: inline-block; margin: 2px; }
     .footer { text-align: center; padding: 1rem; color: rgba(255,255,255,0.7); font-size: 0.7rem; margin-top: 2rem; }
-    div[style*="background:white"] * { color: #1a1a2e !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================
-# FUNCIONES
+# FUNCIONES BÁSICAS
 # ============================================
 
 def corregir_numero(valor) -> float:
@@ -103,21 +98,22 @@ if 'stocks' not in st.session_state:
     st.session_state.stocks = []
 if 'carrito' not in st.session_state:
     st.session_state.carrito = []
-if 'ugreen_catalogo' not in st.session_state:
-    st.session_state.ugreen_catalogo = None
 if 'user_role' not in st.session_state:
     st.session_state.user_role = None
 if 'user_name' not in st.session_state:
     st.session_state.user_name = None
 
 # ============================================
-# LOGIN
+# LOGIN - PANTALLA COMPLETA (SIN SIDEBAR)
 # ============================================
 
 if not st.session_state.auth:
+    # Limpiar cualquier contenido previo
+    st.empty()
+    
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown('<div style="background:rgba(255,255,255,0.95);border-radius:20px;padding:2rem;">', unsafe_allow_html=True)
+        st.markdown('<div style="background:rgba(255,255,255,0.95);border-radius:20px;padding:2rem;margin-top:50px;">', unsafe_allow_html=True)
         
         try:
             st.image("logo.png", width=100)
@@ -157,6 +153,18 @@ if not st.session_state.auth:
     st.stop()
 
 # ============================================
+# A PARTIR DE AQUÍ SOLO SI ESTÁ AUTENTICADO
+# ============================================
+
+# Reconfigurar sidebar para que se vea
+st.set_page_config(
+    page_title="QTC Smart Sales Pro",
+    page_icon="💼",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ============================================
 # HEADER
 # ============================================
 
@@ -186,7 +194,7 @@ with col3:
 st.markdown("---")
 
 # ============================================
-# SIDEBAR
+# SIDEBAR (SOLO DESPUÉS DEL LOGIN)
 # ============================================
 
 with st.sidebar:
@@ -252,7 +260,7 @@ with st.sidebar:
             st.rerun()
 
 # ============================================
-# TABS
+# TABS PRINCIPALES
 # ============================================
 
 tab1, tab2, tab3 = st.tabs(["📦 MODO MASIVO", "🔍 BÚSQUEDA", "🛒 CARRITO"])
@@ -267,7 +275,8 @@ with tab1:
         
         if st.button("Procesar lista", type="primary"):
             if texto_bulk:
-                st.info("Procesando...")
+                # Aquí irá la lógica completa de procesamiento
+                st.info("✅ Función de procesamiento disponible próximamente")
             else:
                 st.warning("Ingresa al menos un SKU")
     else:
@@ -280,7 +289,7 @@ with tab2:
     
     if busqueda and len(busqueda) >= 2:
         if st.session_state.catalogos and st.session_state.stocks:
-            st.info(f"🔍 Buscando: {busqueda}")
+            st.info(f"🔍 Resultados para: {busqueda}")
         else:
             st.warning("⚠️ Carga archivos de catálogo y stock primero")
 
