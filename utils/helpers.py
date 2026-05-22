@@ -1,34 +1,70 @@
 import pandas as pd
 import re
 
-def limpiar_texto(texto):
-    """Limpia texto para comparaciones"""
-    if pd.isna(texto):
-        return ""
-    texto = str(texto).lower().strip()
-    texto = re.sub(r'[^\w\s]', '', texto)
-    return texto
+def corregir_numero(valor) -> float:
+    """Convierte cualquier valor a número flotante"""
+    if pd.isna(valor) or str(valor).strip() in ["", "0", "0.0", "-"]:
+        return 0.0
+    s = str(valor).upper().replace('S/', '').replace('$', '').replace(' ', '').strip()
+    if ',' in s and '.' in s:
+        s = s.replace(',', '')
+    elif ',' in s:
+        partes = s.split(',')
+        if len(partes[-1]) <= 2:
+            s = s.replace(',', '.')
+        else:
+            s = s.replace(',', '')
+    s = re.sub(r'[^\d.]', '', s)
+    try:
+        return float(s)
+    except:
+        return 0.0
 
-def normalizar_sku(sku):
-    """Normaliza SKU (mayúsculas, sin espacios)"""
-    if pd.isna(sku):
-        return ""
-    return str(sku).upper().strip()
+def limpiar_cabeceras(df: pd.DataFrame) -> pd.DataFrame:
+    """Detecta y limpia cabeceras de archivos Excel"""
+    for i in range(min(20, len(df))):
+        fila = [str(x).upper() for x in df.iloc[i].values]
+        if any(h in item for h in ['SKU', 'COD', 'SAP', 'NUMERO', 'ARTICULO'] for item in fila):
+            df.columns = [str(c).strip() for c in df.iloc[i]]
+            return df.iloc[i+1:].reset_index(drop=True)
+    return df
 
-def formatear_moneda(valor):
+def normalizar_texto(texto: str) -> str:
+    """Normaliza texto para mejor comparación"""
+    if not texto or pd.isna(texto):
+        return ""
+    texto = texto.lower().strip()
+    
+    correcciones = {
+        "xioami": "xiaomi", "xiomi": "xiaomi", "xiamoi": "xiaomi",
+        "earphone": "earphone", "earphones": "earphone",
+    }
+    for mal, bien in correcciones.items():
+        texto = texto.replace(mal, bien)
+    
+    sufijos = [' - rn', ' - es', ' - us', ' - eu', ' - gl', ' - demo', ' - rr']
+    for sufijo in sufijos:
+        texto = texto.replace(sufijo, '')
+    
+    return texto.strip()
+
+def formatear_moneda(valor: float) -> str:
     """Formatea número como moneda S/"""
-    try:
-        return f"S/ {float(valor):,.2f}"
-    except:
-        return "S/ 0.00"
+    return f"S/ {valor:,.2f}"
 
-def extraer_cantidad(texto):
-    """Extrae cantidad de formato SKU:CANTIDAD"""
-    if ":" not in texto:
-        return (texto.strip(), 1)
-    partes = texto.split(":", 1)
-    try:
-        cantidad = int(partes[1])
-    except:
-        cantidad = 1
-    return (partes[0].strip(), cantidad)
+def extraer_skus_masivo(texto: str) -> list:
+    """Extrae pares SKU:CANTIDAD de texto masivo"""
+    pedidos = []
+    for line in texto.strip().split('\n'):
+        line = line.strip()
+        if ':' in line:
+            parts = line.split(':')
+            if len(parts) == 2:
+                try:
+                    sku = parts[0].strip().upper()
+                    cantidad = int(parts[1].strip())
+                    if cantidad > 0:
+                        pedidos.append({'sku': sku, 'cantidad': cantidad})
+                except:
+                    pass
+    return pedidos
