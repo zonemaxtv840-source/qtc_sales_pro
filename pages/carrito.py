@@ -61,4 +61,19 @@ def mostrar():
             if cliente:
                 items_export = [{'sku': i['sku'], 'descripcion': i['descripcion'], 'cantidad': i['cantidad'], 'precio': i['precio'], 'total': i['total']} for i in st.session_state.carrito]
                 excel = generar_excel(items_export, cliente, ruc)
-                st.download_button("💾 Descarg
+                st.download_button("💾 Descargar", data=excel, file_name=f"Cotizacion_{cliente}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx", use_container_width=True)
+                st.balloons()
+                st.success("✅ Cotización generada")
+            else:
+                st.warning("Ingresa el nombre del cliente")
+    with col_exp2:
+        if st.button("📋 Copiar CSV", use_container_width=True):
+            csv_text = "SKU,Descripción,Cantidad,Precio,Subtotal\n"
+            for item in st.session_state.carrito:
+                csv_text += f"{item['sku']},{item['descripcion']},{item['cantidad']},{item['precio']:.2f},{item['total']:.2f}\n"
+            csv_text += f"TOTAL,{total_general:.2f}"
+            st.code(csv_text, language="csv")
+    with col_exp3:
+        if st.button("🧹 Limpiar todo", use_container_width=True):
+            st.session_state.carrito = []
+            st.rerun()
