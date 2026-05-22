@@ -1,4 +1,4 @@
-# app.py - QTC Smart Sales Pro v5.0 (SIN pages, SIN sidebar antes del login)
+# app.py - QTC Smart Sales Pro v5.0 (SIN pages)
 
 import streamlit as st
 import pandas as pd
@@ -10,7 +10,7 @@ st.set_page_config(
     page_title="QTC Smart Sales Pro",
     page_icon="💼",
     layout="wide",
-    initial_sidebar_state="collapsed"  # ← Sidebar colapsado por defecto
+    initial_sidebar_state="collapsed"
 )
 
 # ============================================
@@ -27,7 +27,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================
-# FUNCIONES BÁSICAS
+# FUNCIONES
 # ============================================
 
 def corregir_numero(valor) -> float:
@@ -83,7 +83,7 @@ def cargar_archivo(uploaded_file):
         return None
 
 # ============================================
-# INICIALIZACIÓN DE SESIÓN
+# INICIALIZACIÓN
 # ============================================
 
 if 'auth' not in st.session_state:
@@ -104,12 +104,17 @@ if 'user_name' not in st.session_state:
     st.session_state.user_name = None
 
 # ============================================
-# LOGIN - PANTALLA COMPLETA (SIN SIDEBAR)
+# LOGIN - PANTALLA COMPLETA
 # ============================================
 
 if not st.session_state.auth:
-    # Limpiar cualquier contenido previo
-    st.empty()
+    # Limpiar sidebar
+    st.markdown("""
+    <style>
+        [data-testid="stSidebar"] { display: none; }
+        .stApp { margin-left: 0; }
+    </style>
+    """, unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -153,10 +158,17 @@ if not st.session_state.auth:
     st.stop()
 
 # ============================================
-# A PARTIR DE AQUÍ SOLO SI ESTÁ AUTENTICADO
+# DESPUÉS DEL LOGIN - RESTAURAR SIDEBAR
 # ============================================
 
-# Reconfigurar sidebar para que se vea
+# Restaurar sidebar
+st.markdown("""
+<style>
+    [data-testid="stSidebar"] { display: block; }
+</style>
+""", unsafe_allow_html=True)
+
+# Reconfigurar página con sidebar visible
 st.set_page_config(
     page_title="QTC Smart Sales Pro",
     page_icon="💼",
@@ -194,7 +206,7 @@ with col3:
 st.markdown("---")
 
 # ============================================
-# SIDEBAR (SOLO DESPUÉS DEL LOGIN)
+# SIDEBAR
 # ============================================
 
 with st.sidebar:
@@ -260,7 +272,7 @@ with st.sidebar:
             st.rerun()
 
 # ============================================
-# TABS PRINCIPALES
+# TABS
 # ============================================
 
 tab1, tab2, tab3 = st.tabs(["📦 MODO MASIVO", "🔍 BÚSQUEDA", "🛒 CARRITO"])
@@ -269,18 +281,17 @@ with tab1:
     st.markdown("### 📦 Modo Masivo")
     
     if st.session_state.catalogos and st.session_state.stocks:
-        st.success(f"✅ Sistema listo - {len(st.session_state.catalogos)} catálogos, {len(st.session_state.stocks)} stocks cargados")
+        st.success(f"✅ Sistema listo - {len(st.session_state.catalogos)} catálogos, {len(st.session_state.stocks)} stocks")
         
         texto_bulk = st.text_area("Ingresa SKUs:", height=150, placeholder="RN0200065BK8:5\nCN0200047BK8:10")
         
         if st.button("Procesar lista", type="primary"):
             if texto_bulk:
-                # Aquí irá la lógica completa de procesamiento
-                st.info("✅ Función de procesamiento disponible próximamente")
+                st.info("✅ Procesamiento disponible próximamente")
             else:
                 st.warning("Ingresa al menos un SKU")
     else:
-        st.info("📌 Carga archivos de catálogo y stock en el panel izquierdo")
+        st.info("📌 Carga archivos en el panel izquierdo")
 
 with tab2:
     st.markdown("### 🔍 Búsqueda Inteligente")
@@ -291,7 +302,7 @@ with tab2:
         if st.session_state.catalogos and st.session_state.stocks:
             st.info(f"🔍 Resultados para: {busqueda}")
         else:
-            st.warning("⚠️ Carga archivos de catálogo y stock primero")
+            st.warning("⚠️ Carga archivos primero")
 
 with tab3:
     st.markdown("### 🛒 Carrito")
