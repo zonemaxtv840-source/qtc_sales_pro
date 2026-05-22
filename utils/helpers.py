@@ -2,7 +2,6 @@ import pandas as pd
 import re
 
 def corregir_numero(valor) -> float:
-    """Convierte cualquier valor a número flotante"""
     if pd.isna(valor) or str(valor).strip() in ["", "0", "0.0", "-"]:
         return 0.0
     s = str(valor).upper().replace('S/', '').replace('$', '').replace(' ', '').strip()
@@ -21,7 +20,6 @@ def corregir_numero(valor) -> float:
         return 0.0
 
 def limpiar_cabeceras(df: pd.DataFrame) -> pd.DataFrame:
-    """Detecta y limpia cabeceras de archivos Excel"""
     for i in range(min(20, len(df))):
         fila = [str(x).upper() for x in df.iloc[i].values]
         if any(h in item for h in ['SKU', 'COD', 'SAP', 'NUMERO', 'ARTICULO'] for item in fila):
@@ -30,7 +28,6 @@ def limpiar_cabeceras(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def normalizar_texto(texto: str) -> str:
-    """Normaliza texto para mejor comparación"""
     if not texto or pd.isna(texto):
         return ""
     texto = texto.lower().strip()
@@ -49,22 +46,4 @@ def normalizar_texto(texto: str) -> str:
     return texto.strip()
 
 def formatear_moneda(valor: float) -> str:
-    """Formatea número como moneda S/"""
     return f"S/ {valor:,.2f}"
-
-def extraer_skus_masivo(texto: str) -> list:
-    """Extrae pares SKU:CANTIDAD de texto masivo"""
-    pedidos = []
-    for line in texto.strip().split('\n'):
-        line = line.strip()
-        if ':' in line:
-            parts = line.split(':')
-            if len(parts) == 2:
-                try:
-                    sku = parts[0].strip().upper()
-                    cantidad = int(parts[1].strip())
-                    if cantidad > 0:
-                        pedidos.append({'sku': sku, 'cantidad': cantidad})
-                except:
-                    pass
-    return pedidos
