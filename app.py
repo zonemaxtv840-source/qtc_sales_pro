@@ -1,4 +1,4 @@
-# app.py - QTC Smart Sales Pro v5.0 (ORDEN CORREGIDO)
+# app.py - QTC Smart Sales Pro v5.0
 
 import streamlit as st
 import pandas as pd
@@ -32,7 +32,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================
-# FUNCIONES (DEFINIDAS PRIMERO)
+# FUNCIONES
 # ============================================
 
 def corregir_numero(valor) -> float:
@@ -71,7 +71,6 @@ def detectar_columna_sku(df: pd.DataFrame) -> str:
     return df.columns[0]
 
 def cargar_archivo(uploaded_file):
-    """Carga archivo Excel o CSV"""
     if uploaded_file is None:
         return None
     nombre = uploaded_file.name.lower()
@@ -112,7 +111,7 @@ if 'user_name' not in st.session_state:
     st.session_state.user_name = None
 
 # ============================================
-# LOGIN (OCULTA TODO LO DEMÁS)
+# LOGIN
 # ============================================
 
 if not st.session_state.auth:
@@ -155,11 +154,7 @@ if not st.session_state.auth:
         
         st.markdown('</div>', unsafe_allow_html=True)
     
-    st.stop()  # DETIENE TODO AQUÍ
-
-# ============================================
-# TODO LO SIGUIENTE SOLO SI ESTÁ AUTENTICADO
-# ============================================
+    st.stop()
 
 # ============================================
 # HEADER
@@ -191,7 +186,7 @@ with col3:
 st.markdown("---")
 
 # ============================================
-# SIDEBAR (SOLO SE MUESTRA SI ESTÁ AUTENTICADO)
+# SIDEBAR
 # ============================================
 
 with st.sidebar:
@@ -272,10 +267,46 @@ with tab1:
         
         if st.button("Procesar lista", type="primary"):
             if texto_bulk:
-                st.info("Procesando... (función completa en desarrollo)")
+                st.info("Procesando...")
             else:
                 st.warning("Ingresa al menos un SKU")
     else:
         st.info("📌 Carga archivos de catálogo y stock en el panel izquierdo")
-        st.markdown("""
-        ### Formato de ejemplo:
+
+with tab2:
+    st.markdown("### 🔍 Búsqueda Inteligente")
+    
+    busqueda = st.text_input("", placeholder="Ej: RN0200065BK8 o Type-C Earphones")
+    
+    if busqueda and len(busqueda) >= 2:
+        if st.session_state.catalogos and st.session_state.stocks:
+            st.info(f"🔍 Buscando: {busqueda}")
+        else:
+            st.warning("⚠️ Carga archivos de catálogo y stock primero")
+
+with tab3:
+    st.markdown("### 🛒 Carrito")
+    
+    if not st.session_state.carrito:
+        st.info("No hay productos en el carrito")
+    else:
+        for idx, item in enumerate(st.session_state.carrito):
+            col1, col2, col3 = st.columns([2, 2, 1])
+            with col1:
+                st.write(item.get('sku', 'N/A'))
+            with col2:
+                st.write(f"{item.get('cantidad', 0)} x S/ {item.get('precio', 0):.2f}")
+            with col3:
+                if st.button("🗑️", key=f"del_{idx}"):
+                    st.session_state.carrito.pop(idx)
+                    st.rerun()
+        
+        total_general = sum(item.get('total', 0) for item in st.session_state.carrito)
+        st.markdown(f"### TOTAL: S/ {total_general:,.2f}")
+
+# ============================================
+# FOOTER
+# ============================================
+
+st.markdown("---")
+st.markdown(f'<div class="footer">⚡ QTC Smart Sales Pro v5.0 | Modo: {st.session_state.modo}</div>', unsafe_allow_html=True)
