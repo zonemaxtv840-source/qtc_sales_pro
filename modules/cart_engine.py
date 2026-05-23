@@ -1,9 +1,13 @@
+# modules/cart_engine.py
+# Lógica del carrito y exportación a Excel
+
 import pandas as pd
 import io
 from datetime import datetime
+from typing import List, Dict
 
-def generar_excel(items: list, cliente: str, ruc: str) -> bytes:
-    """Genera archivo Excel de cotización"""
+def generar_excel(items: List[Dict], cliente: str, ruc: str) -> bytes:
+    """Genera archivo Excel de cotización con formato profesional"""
     output = io.BytesIO()
     
     df = pd.DataFrame(items)
@@ -25,6 +29,7 @@ def generar_excel(items: list, cliente: str, ruc: str) -> bytes:
             bottom=Side(style='thin')
         )
         
+        # Encabezados de la empresa
         ws['A1'] = 'QTC SMART SALES PRO'
         ws['A1'].font = Font(bold=True, size=14)
         
@@ -35,6 +40,7 @@ def generar_excel(items: list, cliente: str, ruc: str) -> bytes:
         ws['A5'] = 'RUC:'
         ws['B5'] = ruc
         
+        # Encabezados de la tabla
         headers = ['SKU', 'DESCRIPCIÓN', 'CANTIDAD', 'PRECIO UNIT.', 'TOTAL']
         for i, header in enumerate(headers, start=1):
             cell = ws.cell(row=7, column=i, value=header)
@@ -43,6 +49,7 @@ def generar_excel(items: list, cliente: str, ruc: str) -> bytes:
             cell.alignment = Alignment(horizontal="center")
             cell.border = border
         
+        # Datos
         for row_idx, item in enumerate(items, start=8):
             ws.cell(row=row_idx, column=1, value=item['sku']).border = border
             ws.cell(row=row_idx, column=2, value=item['descripcion']).border = border
@@ -56,6 +63,7 @@ def generar_excel(items: list, cliente: str, ruc: str) -> bytes:
             total_cell.number_format = '"S/." #,##0.00'
             total_cell.border = border
         
+        # Total general
         total_row = len(items) + 8
         total_label = ws.cell(row=total_row, column=4, value='TOTAL S/.')
         total_label.font = Font(bold=True, color="FFFFFF")
@@ -66,12 +74,23 @@ def generar_excel(items: list, cliente: str, ruc: str) -> bytes:
         total_valor.number_format = '"S/." #,##0.00'
         total_valor.border = border
         
+        # Ajustar anchos de columna
         ws.column_dimensions['A'].width = 22
         ws.column_dimensions['B'].width = 110
         ws.column_dimensions['C'].width = 12
         ws.column_dimensions['D'].width = 18
         ws.column_dimensions['E'].width = 18
         
+        # Congelar paneles
         ws.freeze_panes = 'A8'
     
     return output.getvalue()
+
+def calcular_total_carrito(carrito: List[Dict]) -> float:
+    """Calcula el total del carrito"""
+    return sum(item.get('total', 0) for item in carrito)
+
+def limpiar_carrito():
+    """Limpia el carrito (función auxiliar)"""
+    import streamlit as st
+    st.session_state.carrito = []
