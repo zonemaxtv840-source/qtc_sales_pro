@@ -1,19 +1,17 @@
+# modules/auth.py
+# Autenticación y gestión de sesiones
+
 import streamlit as st
+from utils.constants import ROLES
 
 def autenticar_usuario(usuario: str, password: str) -> dict:
     """Verifica credenciales y retorna datos del usuario"""
-    credenciales = {
-        "admin": {"password": "qtc2026", "rol": "ADMIN", "nombre": "Administrador"},
-        "kimberly": {"password": "kam2026", "rol": "KAM", "nombre": "Kimberly"},
-        "vendedor": {"password": "ventas2026", "rol": "VENDEDOR", "nombre": "Vendedor"}
-    }
-    
-    if usuario in credenciales and password == credenciales[usuario]["password"]:
+    if usuario in ROLES and password == ROLES[usuario]["password"]:
         return {
             "autenticado": True,
             "usuario": usuario,
-            "rol": credenciales[usuario]["rol"],
-            "nombre": credenciales[usuario]["nombre"]
+            "rol": ROLES[usuario]["rol"],
+            "nombre": ROLES[usuario]["nombre"]
         }
     return {"autenticado": False}
 
@@ -43,10 +41,18 @@ def inicializar_sesion():
         st.session_state.usuario = None
 
 def mostrar_login():
-    """Muestra formulario de login"""
+    """Muestra pantalla de login"""
+    # Ocultar sidebar durante login
+    st.markdown("""
+    <style>
+        [data-testid="stSidebar"] { display: none; }
+        .stApp { margin-left: 0; }
+    </style>
+    """, unsafe_allow_html=True)
+    
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown('<div style="background:rgba(255,255,255,0.95);border-radius:20px;padding:2rem;">', unsafe_allow_html=True)
+        st.markdown('<div style="background:rgba(255,255,255,0.95);border-radius:20px;padding:2rem;margin-top:50px;">', unsafe_allow_html=True)
         
         try:
             st.image("logo.png", width=100)
