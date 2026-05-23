@@ -80,3 +80,8 @@ def mostrar_footer(modo: str):
     """Muestra el footer"""
     st.markdown("---")
     st.markdown(f'<div class="footer">⚡ QTC Smart Sales Pro v5.0 (Modular) | Modo: {modo} | YESSICA/APRI.004: stock inmediato | APRI.001: stock remoto | {datetime.now().strftime("%Y-%m-%d %H:%M")}</div>', unsafe_allow_html=True)
+def badge_ugreen(stock: int) -> str:
+    """Badge para UGREEN"""
+    if stock > 0:
+        return f'<span class="badge-ugreen">📦 UGREEN: {stock}</span>'
+    return '<span class="badge-ugreen">❌ UGREEN: Sin stock</span>'
