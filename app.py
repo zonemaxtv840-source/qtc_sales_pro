@@ -1,355 +1,430 @@
-# app.py - QTC Smart Sales Pro v5.0 (MODO SEGURO)
+# app.py - QTC Smart Sales Pro v5.0 (BÚSQUEDA AVANZADA & ESTABILIZADO)
+# Soporte Inteligente: XIAOMI, UGREEN, OTRAS MARCAS
+# Fixes aplicados: Carrito seguro, Búsqueda multicriterio, Control de stock preciso
 
 import streamlit as st
-from modules.auth import inicializar_sesion, mostrar_login
-from modules.ui_components import (
-    aplicar_estilos_globales, restaurar_sidebar, 
-    mostrar_header, mostrar_footer
-)
-from modules.data_loader import cargar_catalogo, cargar_stock, cargar_ugreen_catalogo
+import pandas as pd
+import re
+import io
+from datetime import datetime
+import warnings
+from typing import List, Dict, Optional
+from difflib import SequenceMatcher
 
-# Configuración de página
-st.set_page_config(
-    page_title="QTC Smart Sales Pro",
-    page_icon="💼",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+warnings.filterwarnings('ignore')
 
-# Inicializar
-inicializar_sesion()
-aplicar_estilos_globales()
+# ============================================
+# CONFIGURACIÓN Y ESTILOS
+# ============================================
 
-# Login
+st.set_page_config(page_title="QTC Smart Sales Pro", page_icon="💼", layout="wide", initial_sidebar_state="expanded")
+
+st.markdown("""
+<style>
+    .stApp { background: linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1e88e5 100%); }
+    [data-testid="stSidebar"] { background: linear-gradient(180deg, #f8a35e 0%, #e87a2d 50%, #d45a1a 100%); border-right: 1px solid #ffcc80; }
+    [data-testid="stSidebar"] * { color: #ffffff !important; }
+    .stMarkdown, .stText, .stNumberInput label, .stSelectbox label { color: #ffffff !important; }
+    h1, h2, h3 { color: #ffffff !important; }
+    
+    /* Cards con texto negro */
+    div[style*="background:white"], div[style*="background:#ffffff"], div[style*="border-radius:16px"] { color: #1a1a2e !important; }
+    div[style*="background:white"] *, div[style*="background:#ffffff"] *, div[style*="border-radius:16px"] * { color: #1a1a2e !important; }
+    
+    /* Excepciones */
+    .badge-yessica, .badge-apri004, .badge-apri001, .badge-ugreen, .badge-otras,
+    .badge-yessica *, .badge-apri004 *, .badge-apri001 *, .badge-ugreen *, .badge-otras * { color: white !important; }
+    .precio-texto { color: #e67e22 !important; font-weight: bold; }
+    
+    /* Badges */
+    .badge-yessica { background: #4CAF50; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; display: inline-block; margin: 2px; }
+    .badge-apri004 { background: #FF9800; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; display: inline-block; margin: 2px; }
+    .badge-apri001 { background: #f44336; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; display: inline-block; margin: 2px; }
+    .badge-ugreen { background: #00BCD4; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; display: inline-block; margin: 2px; }
+    .badge-otras { background: #9C27B0; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; display: inline-block; margin: 2px; }
+    
+    .counter-summary { background: rgba(0,0,0,0.3); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; display: flex; justify-content: space-around; flex-wrap: wrap; }
+    .counter-item { text-align: center; padding: 0.5rem; }
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================
+# FUNCIONES NÚCLEO Y LIMPIEZA
+# ============================================
+
+def corregir_numero(valor) -> float:
+    if pd.isna(valor) or str(valor).strip() in ["", "0", "0.0", "-"]: return 0.0
+    s = str(valor).upper().replace('S/', '').replace('$', '').replace(' ', '').strip()
+    if ',' in s and '.' in s: s = s.replace(',', '')
+    elif ',' in s:
+        partes = s.split(',')
+        if len(partes[-1]) <= 2: s = s.replace(',', '.')
+        else: s = s.replace(',', '')
+    s = re.sub(r'[^\d.]', '', s)
+    try: return float(s)
+    except: return 0.0
+
+def limpiar_cabeceras(df: pd.DataFrame) -> pd.DataFrame:
+    for i in range(min(20, len(df))):
+        fila = [str(x).upper() for x in df.iloc[i].values]
+        if any(h in item for h in ['SKU', 'COD', 'SAP', 'NUMERO', 'ARTICULO'] for item in fila):
+            df.columns = [str(c).strip() for c in df.iloc[i]]
+            return df.iloc[i+1:].reset_index(drop=True)
+    return df
+
+def cargar_archivo(uploaded_file) -> Optional[pd.DataFrame]:
+    try:
+        if uploaded_file.name.lower().endswith('.csv'):
+            try: df = pd.read_csv(uploaded_file, encoding='utf-8')
+            except: df = pd.read_csv(uploaded_file, encoding='latin-1')
+        else: df = pd.read_excel(uploaded_file)
+        return limpiar_cabeceras(df)
+    except Exception as e:
+        st.error(f"Error cargando {uploaded_file.name}: {str(e)[:80]}")
+        return None
+
+def detectar_columnas(df: pd.DataFrame, tipo: str) -> str:
+    diccionario = {
+        'sku': ['SKU', 'COD', 'SAP', 'NUMERO', 'ARTICULO', 'CODIGO'],
+        'desc': ['DESC', 'DESCRIPCION', 'NOMBRE', 'PRODUCTO', 'GOODS'],
+        'stock': ['DISPONIBLE', 'CANTIDAD', 'CANT', 'STOCK']
+    }
+    for col in df.columns:
+        col_upper = str(col).upper()
+        if any(posible in col_upper for posible in diccionario.get(tipo, [])):
+            return col
+    return df.columns[0] if tipo == 'sku' else None
+
+def detectar_columnas_precio(df: pd.DataFrame) -> Dict:
+    precios, mapeo = {}, {'P. IR': ['IR', 'MAYORISTA', 'MAYOR'], 'P. BOX': ['BOX', 'CAJA'], 'P. VIP': ['VIP']}
+    for key, patrones in mapeo.items():
+        for col in df.columns:
+            if any(patron in str(col).upper() for patron in patrones):
+                precios[key] = col
+                break
+    if not precios and 'PRECIO' in [str(c).upper() for c in df.columns]:
+        precios['P. VIP'] = 'PRECIO'
+    return precios
+
+# ============================================
+# LÓGICA DE CATÁLOGOS Y STOCK
+# ============================================
+
+def cargar_catalogo(archivo) -> Optional[Dict]:
+    df = cargar_archivo(archivo)
+    if df is None: return None
+    return {
+        'nombre': archivo.name, 'df': df,
+        'col_sku': detectar_columnas(df, 'sku'),
+        'col_desc': detectar_columnas(df, 'desc'),
+        'precios': detectar_columnas_precio(df)
+    }
+
+def cargar_stock(archivos, modo: str) -> List[Dict]:
+    stocks = []
+    for archivo in archivos:
+        try:
+            xls = pd.ExcelFile(archivo)
+            for hoja in xls.sheet_names:
+                hoja_upper = hoja.upper()
+                if modo == "XIAOMI" and not any(h in hoja_upper for h in ['APRI', 'YESSICA']): continue
+                
+                df = limpiar_cabeceras(pd.read_excel(archivo, sheet_name=hoja))
+                col_cant = detectar_columnas(df, 'stock')
+                
+                if not col_cant:
+                    st.warning(f"⚠️ Hoja {hoja}: Sin columna de stock válida")
+                    continue
+                
+                stocks.append({
+                    'nombre': f"{archivo.name} [{hoja}]", 'df': df,
+                    'col_sku': detectar_columnas(df, 'sku'), 'col_cant': col_cant, 'hoja': hoja
+                })
+        except Exception as e: st.error(f"Error en {archivo.name}: {str(e)[:80]}")
+    return stocks
+
+def buscar_stock_para_sku(sku: str, stocks: List[Dict], modo: str) -> Dict:
+    sku_limpio = str(sku).strip().upper()
+    resultado = {'yessica': 0, 'apri004': 0, 'apri001': 0, 'otros': 0, 'total': 0}
+    
+    for stock in stocks:
+        df, col_sku, col_cant = stock['df'], stock['col_sku'], stock['col_cant']
+        mask = df[col_sku].astype(str).str.strip().str.upper() == sku_limpio
+        
+        if mask.any():
+            cantidad = int(corregir_numero(df[mask].iloc[0][col_cant]))
+            hoja = stock['hoja'].upper()
+            
+            if modo == "XIAOMI":
+                if 'YESSICA' in hoja: resultado['yessica'] = cantidad
+                elif 'APRI.004' in hoja: resultado['apri004'] = cantidad
+                elif 'APRI.001' in hoja: resultado['apri001'] = cantidad
+            else:
+                resultado['otros'] += cantidad
+                
+    resultado['total'] = sum([resultado['yessica'], resultado['apri004'], resultado['apri001'], resultado['otros']])
+    return resultado
+
+# ============================================
+# BÚSQUEDA INTELIGENTE (MEJORADA)
+# ============================================
+
+def crear_mascara_busqueda_inteligente(df: pd.DataFrame, col_sku: str, col_desc: str, busqueda: str) -> pd.Series:
+    """Busca por múltiples tokens (palabras clave) en cualquier orden."""
+    tokens = [t.strip() for t in str(busqueda).split() if len(t.strip()) > 1]
+    if not tokens: return pd.Series([False] * len(df))
+    
+    mask = pd.Series([True] * len(df))
+    for token in tokens:
+        mask_token = df[col_sku].astype(str).str.contains(token, case=False, na=False)
+        if col_desc:
+            mask_token |= df[col_desc].astype(str).str.contains(token, case=False, na=False)
+        mask &= mask_token
+    return mask
+
+def buscar_catalogo_general(busqueda: str, catalogos: List[Dict], stocks: List[Dict], precio_key: str, modo: str) -> List[Dict]:
+    productos_encontrados = {}
+    
+    for cat in catalogos:
+        df = cat['df']
+        col_sku, col_desc = cat['col_sku'], cat.get('col_desc')
+        mask = crear_mascara_busqueda_inteligente(df, col_sku, col_desc, busqueda)
+        
+        for _, row in df[mask].iterrows():
+            sku = str(row[col_sku]).strip().upper()
+            if sku not in productos_encontrados:
+                descripcion = str(row[col_desc])[:200] if col_desc else f"SKU: {sku}"
+                stock_info = buscar_stock_para_sku(sku, stocks, modo)
+                
+                productos_encontrados[sku] = {
+                    'sku': sku, 'descripcion': descripcion, 'precio': 0.0,
+                    'stock_yessica': stock_info['yessica'], 'stock_apri004': stock_info['apri004'],
+                    'stock_apri001': stock_info['apri001'], 'stock_otros': stock_info['otros'],
+                    'stock_total': stock_info['total'], 'tiene_stock': stock_info['total'] > 0,
+                    'tipo': modo
+                }
+            
+            # Actualizar precio si es mayor (prioriza listas de precios actualizadas)
+            if precio_key in cat.get('precios', {}):
+                col_precio = cat['precios'][precio_key]
+                precio_actual = corregir_numero(row[col_precio])
+                if precio_actual > productos_encontrados[sku]['precio']:
+                    productos_encontrados[sku]['precio'] = precio_actual
+                    productos_encontrados[sku]['tiene_precio'] = True
+
+    resultados = list(productos_encontrados.values())
+    resultados.sort(key=lambda x: (-x['tiene_stock'], -x.get('tiene_precio', False)))
+    return resultados
+
+def buscar_ugreen_producto(busqueda: str, ugreen_catalogo: Dict) -> List[Dict]:
+    if not ugreen_catalogo: return []
+    
+    df, col_sku, col_desc = ugreen_catalogo['df'], ugreen_catalogo['col_sku'], ugreen_catalogo['col_desc']
+    col_stock = ugreen_catalogo.get('col_stock')
+    precios_map = ugreen_catalogo.get('precios', {})
+    
+    mask = crear_mascara_busqueda_inteligente(df, col_sku, col_desc, busqueda)
+    resultados = []
+    
+    for _, row in df[mask].iterrows():
+        sku = str(row[col_sku]).strip().upper()
+        stock = int(corregir_numero(row[col_stock])) if col_stock and pd.notna(row[col_stock]) else 0
+        
+        precio_ir = corregir_numero(row.get(precios_map.get('P. IR', 'N/A'), 0))
+        precio_box = corregir_numero(row.get(precios_map.get('P. BOX', 'N/A'), 0))
+        precio_vip = corregir_numero(row.get(precios_map.get('P. VIP', 'N/A'), 0))
+        
+        resultados.append({
+            'sku': sku,
+            'descripcion': str(row[col_desc])[:200] if col_desc else f"SKU: {sku}",
+            'precios': {'P. IR': precio_ir, 'P. BOX': precio_box, 'P. VIP': precio_vip},
+            'stock_total': stock, 'tiene_stock': stock > 0,
+            'tiene_precio': any(p > 0 for p in [precio_ir, precio_box, precio_vip]),
+            'tipo': 'UGREEN'
+        })
+    return resultados
+
+# ============================================
+# EXPORTACIÓN
+# ============================================
+
+def generar_excel(items: List[Dict], cliente: str, ruc: str) -> bytes:
+    output = io.BytesIO()
+    df = pd.DataFrame(items)
+    
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Cotizacion', index=False, startrow=6)
+        ws = writer.sheets['Cotizacion']
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        
+        border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+        ws['A1'] = 'QTC SMART SALES PRO'
+        ws['A1'].font = Font(bold=True, size=14)
+        ws['A3'], ws['B3'] = 'FECHA:', datetime.now().strftime("%d/%m/%Y %H:%M")
+        ws['A4'], ws['B4'] = 'CLIENTE:', cliente.upper()
+        ws['A5'], ws['B5'] = 'RUC:', ruc
+        
+        headers = ['SKU', 'DESCRIPCIÓN', 'CANTIDAD', 'PRECIO UNIT.', 'TOTAL']
+        for i, header in enumerate(headers, start=1):
+            cell = ws.cell(row=7, column=i, value=header)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="e67e22", end_color="e67e22", fill_type="solid")
+            cell.alignment = Alignment(horizontal="center")
+            cell.border = border
+        
+        for r_idx, item in enumerate(items, start=8):
+            ws.cell(row=r_idx, column=1, value=item['sku']).border = border
+            ws.cell(row=r_idx, column=2, value=item['descripcion']).border = border
+            ws.cell(row=r_idx, column=3, value=item['cantidad']).border = border
+            c_precio = ws.cell(row=r_idx, column=4, value=item['precio'])
+            c_precio.number_format, c_precio.border = '"S/." #,##0.00', border
+            c_total = ws.cell(row=r_idx, column=5, value=item['total'])
+            c_total.number_format, c_total.border = '"S/." #,##0.00', border
+        
+        t_row = len(items) + 8
+        t_lbl = ws.cell(row=t_row, column=4, value='TOTAL S/.')
+        t_lbl.font, t_lbl.fill, t_lbl.border = Font(bold=True, color="FFFFFF"), PatternFill(start_color="e67e22", end_color="e67e22", fill_type="solid"), border
+        t_val = ws.cell(row=t_row, column=5, value=sum(i['total'] for i in items))
+        t_val.number_format, t_val.border = '"S/." #,##0.00', border
+        
+        ws.column_dimensions['A'].width, ws.column_dimensions['B'].width = 22, 110
+        ws.column_dimensions['C'].width, ws.column_dimensions['D'].width, ws.column_dimensions['E'].width = 12, 18, 18
+    return output.getvalue()
+
+# ============================================
+# INICIALIZACIÓN
+# ============================================
+
+for key in ['auth', 'catalogos', 'stocks', 'carrito', 'ugreen_catalogo']:
+    if key not in st.session_state:
+        st.session_state[key] = [] if key in ['catalogos', 'stocks', 'carrito'] else False if key == 'auth' else None
+if 'modo' not in st.session_state: st.session_state.modo = "XIAOMI"
+if 'precio_key' not in st.session_state: st.session_state.precio_key = "P. VIP"
+
 if not st.session_state.auth:
-    mostrar_login()
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown('<div style="background:rgba(255,255,255,0.95);border-radius:20px;padding:2rem;text-align:center;"><h2>QTC Smart Sales Pro</h2><p style="color:#666;">Ingreso al Sistema</p></div>', unsafe_allow_html=True)
+        user = st.text_input("👤 Usuario", placeholder="admin / vendedor")
+        pw = st.text_input("🔒 Contraseña", type="password")
+        if st.button("🚀 Ingresar", use_container_width=True):
+            if (user == "admin" and pw == "qtc2026") or (user == "vendedor" and pw == "ventas2026"):
+                st.session_state.auth, st.session_state.user_role, st.session_state.user_name = True, "ADMIN" if user=="admin" else "VENDEDOR", user.capitalize()
+                st.rerun()
+            else: st.error("❌ Credenciales incorrectas")
     st.stop()
 
-# Restaurar sidebar después del login
-restaurar_sidebar()
-
-# Header
-mostrar_header()
-
 # ============================================
-# SIDEBAR - CARGA DE ARCHIVOS
+# UI PRINCIPAL
 # ============================================
+
+col1, col2, col3 = st.columns([1, 5, 2])
+with col2: st.markdown("## QTC Smart Sales Pro")
+with col3:
+    if st.button("🚪 Cerrar Sesión", use_container_width=True):
+        st.session_state.auth, st.session_state.carrito = False, []
+        st.rerun()
 
 with st.sidebar:
     st.markdown("### 🎯 Configuración")
-    
-    marca_seleccionada = st.radio(
-        "📌 Marca / Modo",
-        ["XIAOMI", "UGREEN"],
-        index=0 if st.session_state.modo == "XIAOMI" else 1
-    )
-    st.session_state.modo = marca_seleccionada
-    
-    st.markdown("---")
-    
-    precio_opcion = st.radio(
-        "💰 Nivel de precio",
-        ["P. VIP", "P. BOX", "P. IR"],
-        index=0
-    )
-    st.session_state.precio_key = precio_opcion
-    
-    st.markdown("---")
+    st.session_state.modo = st.radio("📌 Marca / Modo", ["XIAOMI", "UGREEN", "OTRAS MARCAS"], index=["XIAOMI", "UGREEN", "OTRAS MARCAS"].index(st.session_state.modo))
+    st.session_state.precio_key = st.radio("💰 Nivel de precio", ["P. VIP", "P. BOX", "P. IR"])
     
     st.markdown("### 📂 Archivos")
-    
-    if marca_seleccionada == "XIAOMI":
-        st.markdown("**📚 Catálogos de precios**")
-        archivos_cat = st.file_uploader(
-            "Excel o CSV",
-            type=['xlsx', 'xls', 'csv'],
-            accept_multiple_files=True,
-            key="cat_upload"
-        )
+    if st.session_state.modo in ["XIAOMI", "OTRAS MARCAS"]:
+        archivos_cat = st.file_uploader("Catálogos (Excel/CSV)", type=['xlsx', 'xls', 'csv'], accept_multiple_files=True)
         if archivos_cat:
-            st.session_state.catalogos = []
-            for archivo in archivos_cat:
-                cat = cargar_catalogo(archivo)
-                if cat:
-                    st.session_state.catalogos.append(cat)
-                    st.success(f"✅ {archivo.name[:30]}")
-        
-        st.markdown("**📦 Reportes de stock**")
-        archivos_stock = st.file_uploader(
-            "Excel",
-            type=['xlsx', 'xls'],
-            accept_multiple_files=True,
-            key="stock_upload"
-        )
+            st.session_state.catalogos = [c for c in (cargar_catalogo(a) for a in archivos_cat) if c]
+            st.success(f"✅ {len(st.session_state.catalogos)} catálogos listos")
+            
+        archivos_stock = st.file_uploader("Stock (Excel)", type=['xlsx', 'xls'], accept_multiple_files=True)
         if archivos_stock:
             st.session_state.stocks = cargar_stock(archivos_stock, st.session_state.modo)
-    
-    elif marca_seleccionada == "UGREEN":
-        st.markdown("**📚 Catálogo UGREEN**")
-        archivo_ugreen = st.file_uploader(
-            "Excel UGREEN",
-            type=['xlsx', 'xls'],
-            accept_multiple_files=False,
-            key="ugreen_upload"
-        )
+            st.success(f"✅ Stock listo")
+            
+    elif st.session_state.modo == "UGREEN":
+        archivo_ugreen = st.file_uploader("Catálogo UGREEN", type=['xlsx', 'xls'])
         if archivo_ugreen:
-            ugreen_cat = cargar_ugreen_catalogo(archivo_ugreen)
-            if ugreen_cat:
-                st.session_state.ugreen_catalogo = ugreen_cat
-                st.success(f"✅ UGREEN: {archivo_ugreen.name[:30]}")
-    
-    st.markdown("---")
-    
-    if st.session_state.carrito:
-        total = sum(item.get('total', 0) for item in st.session_state.carrito)
-        st.metric("Total Carrito", f"S/ {total:,.2f}")
-        if st.button("🧹 Limpiar carrito", use_container_width=True):
-            st.session_state.carrito = []
-            st.rerun()
+            st.session_state.ugreen_catalogo = cargar_catalogo(archivo_ugreen)
+            st.session_state.ugreen_catalogo['col_stock'] = detectar_columnas(st.session_state.ugreen_catalogo['df'], 'stock')
+            st.success("✅ UGREEN listo")
 
 # ============================================
-# TABS PRINCIPALES - VERSIÓN SEGURA
+# TABS
 # ============================================
 
-tab1, tab2, tab3 = st.tabs(["📦 MODO MASIVO", "🔍 BÚSQUEDA", "🛒 CARRITO"])
+tab1, tab2, tab3 = st.tabs(["📦 MODO MASIVO", "🔍 BÚSQUEDA INTELIGENTE", f"🛒 CARRITO ({len(st.session_state.carrito)})"])
 
-# ========== TAB 1: MODO MASIVO ==========
-with tab1:
-    st.markdown("### 📦 Modo Masivo")
-    
-    if st.session_state.modo == "XIAOMI":
-        if not st.session_state.catalogos or not st.session_state.stocks:
-            st.warning("📌 Carga catálogos y stock en el panel izquierdo")
-        else:
-            from modules.stock_engine import buscar_producto
-            from utils.helpers import extraer_pedidos_bulk, formatear_moneda
-            from modules.ui_components import construir_badge_stock
-            
-            texto_bulk = st.text_area("Ingresa SKUs:", height=150, 
-                                       placeholder="RN0200065BK8:5\nCN0200047BK8:10")
-            
-            if st.button("Procesar lista", type="primary"):
-                if texto_bulk:
-                    pedidos = extraer_pedidos_bulk(texto_bulk)
-                    if pedidos:
-                        with st.spinner("Procesando..."):
-                            resultados = []
-                            for pedido in pedidos:
-                                prod = buscar_producto(pedido['sku'], st.session_state.catalogos, 
-                                                       st.session_state.stocks, st.session_state.precio_key)
-                                
-                                if prod['tiene_precio'] and prod['tiene_stock']:
-                                    cantidad_cotizar = min(pedido['cantidad'], prod['stock_total'])
-                                    estado = "✅ OK"
-                                else:
-                                    cantidad_cotizar = 0
-                                    estado = "❌ No disponible"
-                                
-                                resultados.append({
-                                    **prod,
-                                    'cantidad_solicitada': pedido['cantidad'],
-                                    'cantidad_cotizar': cantidad_cotizar,
-                                    'estado': estado
-                                })
-                            
-                            st.session_state.resultados_bulk = resultados
-                            st.success(f"✅ Procesados {len(pedidos)} productos")
-                    
-                    if st.session_state.resultados_bulk:
-                        for prod in st.session_state.resultados_bulk[:10]:
-                            badges = construir_badge_stock(prod['stock_yessica'], prod['stock_apri004'], prod['stock_apri001'])
-                            st.markdown(f"""
-                            <div style="background:white;border-radius:12px;padding:1rem;margin-bottom:0.5rem;">
-                                <strong>📦 {prod['sku']}</strong><br>
-                                📝 {prod['descripcion'][:80]}<br>
-                                💰 {formatear_moneda(prod['precio'])}<br>
-                                {badges}
-                                <strong>Estado:</strong> {prod['estado']}
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            if prod['cantidad_cotizar'] > 0 and prod['tiene_precio']:
-                                if st.button(f"➕ Agregar {prod['sku']}", key=f"add_{prod['sku']}"):
-                                    st.session_state.carrito.append({
-                                        'sku': prod['sku'],
-                                        'descripcion': prod['descripcion'],
-                                        'cantidad': prod['cantidad_cotizar'],
-                                        'precio': prod['precio'],
-                                        'total': prod['precio'] * prod['cantidad_cotizar'],
-                                        'stock_yessica': prod['stock_yessica'],
-                                        'stock_apri004': prod['stock_apri004'],
-                                        'stock_apri001': prod['stock_apri001']
-                                    })
-                                    st.rerun()
-                    else:
-                        st.info("Procesa una lista para ver resultados")
-                else:
-                    st.warning("Ingresa al menos un SKU")
-    
-    elif st.session_state.modo == "UGREEN":
-        if not st.session_state.ugreen_catalogo:
-            st.warning("📌 Carga el catálogo UGREEN en el panel izquierdo")
-        else:
-            from modules.stock_engine import buscar_ugreen_producto
-            
-            texto_bulk = st.text_area("Ingresa SKUs UGREEN:", height=150, 
-                                       placeholder="SKU:5\nOTROSKU:10")
-            
-            if st.button("Procesar lista UGREEN", type="primary"):
-                if texto_bulk:
-                    st.info("🟢 Procesamiento UGREEN - Función en desarrollo")
-                else:
-                    st.warning("Ingresa al menos un SKU")
-    
-    else:
-        st.info("Selecciona XIAOMI o UGREEN en el panel izquierdo")
-
-# ========== TAB 2: BÚSQUEDA ==========
 with tab2:
-    st.markdown("### 🔍 Búsqueda Inteligente")
+    st.markdown("### 🔍 Búsqueda Multicriterio")
+    busqueda = st.text_input("", placeholder="Ej: 'audifonos bluetooth' (Busca en cualquier orden)")
     
-    if st.session_state.modo == "XIAOMI":
-        if not st.session_state.catalogos or not st.session_state.stocks:
-            st.warning("📌 Carga catálogos y stock en el panel izquierdo")
-        else:
-            from modules.search_engine import buscar_productos_profesional
-            from modules.ui_components import construir_badge_stock
-            from utils.helpers import formatear_moneda
+    if busqueda and len(busqueda) >= 2:
+        with st.spinner("🔍 Rastreando base de datos..."):
+            resultados = []
+            if st.session_state.modo in ["XIAOMI", "OTRAS MARCAS"] and st.session_state.catalogos:
+                resultados = buscar_catalogo_general(busqueda, st.session_state.catalogos, st.session_state.stocks, st.session_state.precio_key, st.session_state.modo)
+            elif st.session_state.modo == "UGREEN" and st.session_state.ugreen_catalogo:
+                resultados = buscar_ugreen_producto(busqueda, st.session_state.ugreen_catalogo)
+                for r in resultados: r['precio'] = r['precios'].get(st.session_state.precio_key, 0)
             
-            query = st.text_input("🔎 Buscar", placeholder="Ej: earphones, RN0200065BK8...")
-            
-            if query and len(query) >= 2:
-                with st.spinner("Buscando..."):
-                    resultados = buscar_productos_profesional(
-                        query, st.session_state.catalogos, st.session_state.stocks, 
-                        st.session_state.precio_key, {"solo_stock": True}
-                    )
+            if resultados:
+                st.success(f"✅ {len(resultados)} coincidencias")
+                for prod in resultados:
+                    precio_str = f"S/ {prod['precio']:,.2f}" if prod.get('precio', 0) > 0 else "Consultar Precio"
+                    color_borde = "#4CAF50" if prod['tiene_stock'] and prod.get('precio',0)>0 else "#f44336" if prod['tiene_stock'] else "#9e9e9e"
                     
-                    if resultados:
-                        for prod in resultados[:20]:
-                            badges = construir_badge_stock(prod['stock_yessica'], prod['stock_apri004'], prod['stock_apri001'])
-                            st.markdown(f"""
-                            <div style="background:white;border-radius:12px;padding:1rem;margin-bottom:0.5rem;">
-                                <strong>📦 {prod['sku']}</strong><br>
-                                📝 {prod['descripcion'][:80]}<br>
-                                💰 {formatear_moneda(prod['precio'])}<br>
-                                {badges}
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            if prod['tiene_stock'] and prod['tiene_precio']:
-                                col_cant, col_btn = st.columns([1, 2])
-                                with col_cant:
-                                    cantidad = st.number_input("Cant", min_value=1, max_value=prod['stock_total'], value=1, key=f"busq_{prod['sku']}", label_visibility="collapsed")
-                                with col_btn:
-                                    if st.button(f"➕ Agregar", key=f"add_{prod['sku']}"):
-                                        st.session_state.carrito.append({
-                                            'sku': prod['sku'], 'descripcion': prod['descripcion'], 'cantidad': cantidad,
-                                            'precio': prod['precio'], 'total': prod['precio'] * cantidad,
-                                            'stock_yessica': prod['stock_yessica'], 'stock_apri004': prod['stock_apri004'], 'stock_apri001': prod['stock_apri001']
-                                        })
-                                        st.rerun()
-                            st.divider()
-    
-    elif st.session_state.modo == "UGREEN":
-        if not st.session_state.ugreen_catalogo:
-            st.warning("📌 Carga el catálogo UGREEN en el panel izquierdo")
-        else:
-            from modules.stock_engine import buscar_ugreen_producto
-            
-            query = st.text_input("🔎 Buscar en UGREEN", placeholder="Ej: cable, cargador...")
-            
-            if query and len(query) >= 2:
-                with st.spinner("Buscando..."):
-                    resultados = buscar_ugreen_producto(query, st.session_state.ugreen_catalogo)
-                    
-                    if resultados:
-                        for prod in resultados:
-                            precio = prod['precios'].get(st.session_state.precio_key, 0)
-                            st.markdown(f"""
-                            <div style="background:white;border-radius:12px;padding:1rem;margin-bottom:0.5rem;border-left:5px solid #00BCD4;">
-                                <strong>📦 {prod['sku']}</strong> <span style="background:#00BCD4;color:white;padding:2px 8px;border-radius:12px;">UGREEN</span><br>
-                                📝 {prod['descripcion'][:80]}<br>
-                                💰 {formatear_moneda(precio)} | 📦 Stock: {prod['stock']}
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            if prod['tiene_stock'] and precio > 0:
-                                col_cant, col_btn = st.columns([1, 2])
-                                with col_cant:
-                                    cantidad = st.number_input("Cant", min_value=1, max_value=prod['stock'], value=1, key=f"ugreen_{prod['sku']}", label_visibility="collapsed")
-                                with col_btn:
-                                    if st.button(f"➕ Agregar", key=f"add_ugreen_{prod['sku']}"):
-                                        st.session_state.carrito.append({
-                                            'sku': prod['sku'], 'descripcion': prod['descripcion'], 'cantidad': cantidad,
-                                            'precio': precio, 'total': precio * cantidad, 'tipo': 'UGREEN'
-                                        })
-                                        st.rerun()
-                            st.divider()
-    
-    else:
-        st.info("Selecciona XIAOMI o UGREEN en el panel izquierdo")
-
-# ========== TAB 3: CARRITO ==========
-with tab3:
-    st.markdown("### 🛒 Cotización actual")
-    
-    if not st.session_state.carrito:
-        st.info("No hay productos en el carrito")
-    else:
-        from modules.cart_engine import generar_excel
-        from utils.helpers import formatear_moneda
-        from modules.ui_components import construir_badge_stock
-        
-        for idx, item in enumerate(st.session_state.carrito):
-            col1, col2, col3, col4, col5, col6 = st.columns([2, 4, 1, 1, 1, 0.5])
-            with col1:
-                st.write(f"**{item['sku']}**")
-            with col2:
-                st.write(item['descripcion'])
-            with col3:
-                nueva_cant = st.number_input("Cant", min_value=0, value=item['cantidad'], step=1, key=f"edit_{idx}", label_visibility="collapsed")
-                if nueva_cant != item['cantidad']:
-                    if nueva_cant == 0:
-                        st.session_state.carrito.pop(idx)
-                        st.rerun()
+                    if prod['tipo'] == 'XIAOMI':
+                        badge_stock = f'<span class="badge-yessica">🟢 YESSICA: {prod.get("stock_yessica",0)}</span> <span class="badge-apri004">🟡 APRI.004: {prod.get("stock_apri004",0)}</span> <span class="badge-apri001">🔴 APRI.001: {prod.get("stock_apri001",0)}</span>'
+                    elif prod['tipo'] == 'UGREEN':
+                        badge_stock = f'<span class="badge-ugreen">📦 UGREEN: {prod["stock_total"]}</span>'
                     else:
-                        item['cantidad'] = nueva_cant
-                        item['total'] = item['precio'] * nueva_cant
-            with col4:
-                st.write(f"{formatear_moneda(item['precio'])}")
-            with col5:
-                st.write(f"**{formatear_moneda(item['total'])}**")
-            with col6:
-                if st.button("🗑️", key=f"del_{idx}"):
-                    st.session_state.carrito.pop(idx)
-                    st.rerun()
+                        badge_stock = f'<span class="badge-otras">📦 DISPONIBLE: {prod["stock_total"]}</span>'
+                    
+                    st.markdown(f"""
+                    <div style="background:white;border-radius:12px;padding:1rem;margin-bottom:1rem;border-left:5px solid {color_borde};">
+                        <strong>📦 SKU: {prod['sku']}</strong><br>
+                        <span style="font-size:0.9rem;">{prod['descripcion']}</span><br>
+                        <strong style="color:#e67e22;">💰 {precio_str}</strong><br>
+                        <div style="margin-top:8px;">{badge_stock}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if prod['tiene_stock'] and prod.get('precio', 0) > 0:
+                        col_c, col_b = st.columns([1,3])
+                        cant = col_c.number_input("Cant", min_value=1, max_value=prod['stock_total'], key=f"q_{prod['sku']}")
+                        if col_b.button("➕ Agregar", key=f"add_{prod['sku']}"):
+                            st.session_state.carrito.append({
+                                'sku': prod['sku'], 'descripcion': prod['descripcion'], 'cantidad': cant,
+                                'precio': prod['precio'], 'total': prod['precio'] * cant, 'tipo': prod['tipo']
+                            })
+                            st.rerun()
+            else: st.info("No se encontraron resultados que coincidan con todas las palabras.")
+
+with tab3:
+    st.markdown("### 🛒 Cotizador Seguro")
+    if not st.session_state.carrito: st.info("Carrito vacío")
+    else:
+        productos_mantener = []
+        for idx, item in enumerate(st.session_state.carrito):
+            c1, c2, c3, c4, c5 = st.columns([2, 4, 2, 2, 1])
+            eliminar = False
+            c1.write(f"**{item['sku']}**")
+            c2.write(item['descripcion'][:50])
+            nueva_cant = c3.number_input("Cant", min_value=0, value=item['cantidad'], key=f"c_{idx}_{item['sku']}")
+            if nueva_cant != item['cantidad']:
+                item['cantidad'], item['total'] = nueva_cant, item['precio'] * nueva_cant
+            c4.write(f"S/ {item['total']:,.2f}")
+            if c5.button("🗑️", key=f"d_{idx}_{item['sku']}"): eliminar = True
             
-            if item.get('tipo') == 'UGREEN':
-                st.markdown('<span class="badge-ugreen">📦 UGREEN</span>', unsafe_allow_html=True)
-            else:
-                badges = construir_badge_stock(item.get('stock_yessica', 0), item.get('stock_apri004', 0), item.get('stock_apri001', 0))
-                st.markdown(badges, unsafe_allow_html=True)
+            if item['cantidad'] > 0 and not eliminar: productos_mantener.append(item)
             st.divider()
-        
-        total_general = sum(item['total'] for item in st.session_state.carrito)
-        st.markdown(f"### TOTAL: {formatear_moneda(total_general)}")
-        
-        st.markdown("### 📋 Datos del cliente")
-        cliente = st.text_input("Nombre del cliente", placeholder="Ej: Empresa SAC")
-        ruc = st.text_input("RUC/DNI", placeholder="Ej: 20123456789")
-        
-        if st.button("📥 Exportar Excel", type="primary"):
-            if cliente:
-                items_export = [{'sku': i['sku'], 'descripcion': i['descripcion'], 'cantidad': i['cantidad'], 'precio': i['precio'], 'total': i['total']} for i in st.session_state.carrito]
-                excel = generar_excel(items_export, cliente, ruc)
-                st.download_button("💾 Descargar", data=excel, file_name=f"Cotizacion_{cliente}.xlsx")
-                st.balloons()
-            else:
-                st.warning("Ingresa el nombre del cliente")
-
-# ============================================
-# FOOTER
-# ============================================
-
-mostrar_footer(st.session_state.modo)
+            
+        if len(productos_mantener) != len(st.session_state.carrito) or any(i['cantidad'] != i.get('_last_q', i['cantidad']) for i in productos_mantener):
+            st.session_state.carrito = productos_mantener
+            st.rerun()
+            
+        st.markdown(f"### 💰 TOTAL: S/ {sum(i['total'] for i in st.session_state.carrito):,.2f}")
+        cliente, ruc = st.text_input("Cliente"), st.text_input("RUC/DNI")
+        if st.button("📥 Exportar Excel", type="primary") and cliente:
+            st.download_button("Descargar", data=generar_excel(st.session_state.carrito, cliente, ruc), file_name=f"Cotizacion_{cliente}.xlsx")
